@@ -40,11 +40,15 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
+    // suppressHydrationWarning: browser extensions (e.g. Trancy, AI sidebars)
+    // inject attributes like `trancy-version` / `bis_skin_checked` into
+    // <html>/<body> before React hydrates, causing false hydration errors.
     <html
       lang="en"
+      suppressHydrationWarning
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col overscroll-none">
+      <body suppressHydrationWarning className="min-h-full flex flex-col overscroll-none">
         {children}
         <PwaRegister />
       </body>
