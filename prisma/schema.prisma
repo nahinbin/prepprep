@@ -1,0 +1,148 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model AppSettings {
+  id                   String @id @default("default")
+  startingCoins        Int    @default(500)
+  coinsPerCorrect      Int    @default(10)
+  xpPerCorrect         Int    @default(10)
+  xpPerWrong           Int    @default(5)
+  coinsPerQuestionCost Int    @default(5)
+  redoXpRecovery       Int    @default(5)
+}
+
+model User {
+  id              String            @id @default(cuid())
+  username        String            @unique
+  password        String
+  profilePicture  String?
+  positivePoints  Int               @default(0)
+  negativePoints  Int               @default(0)
+  coins           Int               @default(500)
+  sessions        Session[]
+  transactions    CoinTransaction[]
+  mistakes        Mistake[]
+  orders          Order[]
+}
+
+model Reward {
+  id          String   @id @default(cuid())
+  name        String
+  image       String
+  coinCost    Int
+  minXp       Int      @default(0)
+  minAccuracy Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  orders      Order[]
+}
+
+model Order {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  rewardId  String
+  reward    Reward   @relation(fields: [rewardId], references: [id])
+  coinCost  Int
+  fullName  String
+  phone     String
+  address   String
+  city      String
+  country   String
+  status    String   @default("pending")
+  createdAt DateTime @default(now())
+}
+
+model CoinTransaction {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  amount    Int
+  reason    String
+  createdAt DateTime @default(now())
+}
+
+model Subject {
+  id        String     @id @default(cuid())
+  name      String     @unique
+  topics    Topic[]
+  questions Question[]
+}
+
+model Topic {
+  id        String     @id @default(cuid())
+  name      String
+  subjectId String
+  subject   Subject    @relation(fields: [subjectId], references: [id])
+  questions Question[]
+
+  @@unique([subjectId, name])
+}
+
+model Question {
+  id            String    @id @default(cuid())
+  externalId    Int?
+  subjectId     String
+  subject       Subject   @relation(fields: [subjectId], references: [id])
+  topicId       String
+  topic         Topic     @relation(fields: [topicId], references: [id])
+  question      String
+  options       String
+  correctAnswer String
+  attempts      Attempt[]
+  mistakes      Mistake[]
+}
+
+model Session {
+  id              String    @id @default(cuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id])
+  createdAt       DateTime  @default(now())
+  totalQuestions  Int
+  correctAnswers  Int
+  wrongAnswers    Int
+  positivePoints  Int
+  negativePoints  Int
+  netPoints       Int
+  isPractice      Boolean   @default(false)
+  attempts        Attempt[]
+  mistakes        Mistake[]
+}
+
+model Attempt {
+  id             String    @id @default(cuid())
+  sessionId      String
+  session        Session   @relation(fields: [sessionId], references: [id])
+  questionId     Int
+  questionRefId  String?
+  questionRef    Question? @relation(fields: [questionRefId], references: [id])
+  question       String
+  options        String
+  correctAnswer  String
+  selectedAnswer String
+  isCorrect      Boolean
+  pointsGained   Int
+  pointsLost     Int
+}
+
+model Mistake {
+  id             String   @id @default(cuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id])
+  sessionId      String
+  session        Session  @relation(fields: [sessionId], references: [id])
+  questionId     String
+  question       Question @relation(fields: [questionId], references: [id])
+  selectedAnswer String
+  correctAnswer  String
+  correctCount   Int      @default(0)
+  isCorrected    Boolean  @default(false)
+  fromPractice   Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
