@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { AppShell } from "@/components/NavMenu";
+import { AppShell, NavMenu } from "@/components/NavMenu";
 import {
   ArrowLeft,
   CheckCircle2,
@@ -174,18 +174,11 @@ export function ReviewView({ session, attempts }: ReviewViewProps) {
                   </span>
                 )}
               </h1>
-              <p className="text-sm text-muted-foreground">
-                Reflect on your answers and save questions for later revision
-              </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <Link href="/">
-              <Button variant="outline" size="sm" className="rounded-xl font-bold">
-                Home
-              </Button>
-            </Link>
+          <div className="md:hidden">
+            <NavMenu />
           </div>
         </div>
 
@@ -219,25 +212,22 @@ export function ReviewView({ session, attempts }: ReviewViewProps) {
           <div className="flex items-center gap-1.5 bg-muted/50 p-1 rounded-xl">
             <button
               onClick={() => setFilter("all")}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
-                filter === "all" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
-              }`}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${filter === "all" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                }`}
             >
               All ({attempts.length})
             </button>
             <button
               onClick={() => setFilter("wrong")}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
-                filter === "wrong" ? "bg-background text-danger shadow-sm" : "text-muted-foreground hover:text-foreground"
-              }`}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${filter === "wrong" ? "bg-background text-danger shadow-sm" : "text-muted-foreground hover:text-foreground"
+                }`}
             >
               Wrong ({session.wrongAnswers})
             </button>
             <button
               onClick={() => setFilter("correct")}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
-                filter === "correct" ? "bg-background text-success shadow-sm" : "text-muted-foreground hover:text-foreground"
-              }`}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${filter === "correct" ? "bg-background text-success shadow-sm" : "text-muted-foreground hover:text-foreground"
+                }`}
             >
               Correct ({session.correctAnswers})
             </button>
@@ -278,11 +268,10 @@ export function ReviewView({ session, attempts }: ReviewViewProps) {
         {/* Save Status Notification */}
         {saveStatus && (
           <div
-            className={`p-4 rounded-2xl text-sm font-semibold flex items-center justify-between animate-fade-in ${
-              saveStatus.type === "success"
-                ? "bg-success/15 text-success border border-success/30"
-                : "bg-danger/15 text-danger border border-danger/30"
-            }`}
+            className={`p-4 rounded-2xl text-sm font-semibold flex items-center justify-between animate-fade-in ${saveStatus.type === "success"
+              ? "bg-success/15 text-success border border-success/30"
+              : "bg-danger/15 text-danger border border-danger/30"
+              }`}
           >
             <span>{saveStatus.message}</span>
             <button
@@ -309,9 +298,8 @@ export function ReviewView({ session, attempts }: ReviewViewProps) {
               return (
                 <Card
                   key={att.id || idx}
-                  className={`p-5 md:p-6 rounded-2xl transition-all border-2 ${
-                    isSelected ? "border-primary/50 shadow-md bg-primary/5" : "border-border/60"
-                  }`}
+                  className={`p-5 md:p-6 rounded-2xl transition-all border-2 ${isSelected ? "border-primary/50 shadow-md bg-primary/5" : "border-border/60"
+                    }`}
                 >
                   <div className="flex items-start justify-between gap-3 mb-4">
                     <div className="flex items-center gap-3">
@@ -349,11 +337,10 @@ export function ReviewView({ session, attempts }: ReviewViewProps) {
                       <button
                         onClick={() => handleSaveSingle(att)}
                         disabled={isSaving || isAlreadySaved}
-                        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-bold transition-all ${
-                          isAlreadySaved
-                            ? "bg-primary/20 text-primary border border-primary/30"
-                            : "bg-muted hover:bg-muted/80 text-muted-foreground hover:text-foreground border border-border"
-                        }`}
+                        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-bold transition-all ${isAlreadySaved
+                          ? "bg-primary/20 text-primary border border-primary/30"
+                          : "bg-muted hover:bg-muted/80 text-muted-foreground hover:text-foreground border border-border"
+                          }`}
                         title={isAlreadySaved ? "Saved" : "Save question for practice"}
                       >
                         {isAlreadySaved ? (
