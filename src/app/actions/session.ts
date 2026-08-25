@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/app/actions/auth";
 import { getEconomySettings } from "@/app/actions/settings";
+import { revalidatePath } from "next/cache";
 
 export async function saveSessionData(data: {
   totalQuestions: number;
@@ -97,4 +98,70 @@ export async function saveSessionData(data: {
   }
 
   return { sessionId: session.id };
+}
+
+export async function saveQuestionsFromSession(
+  questionsToSave: Array<{
+    question: string;
+    options: string;
+    correctAnswer: string;
+  }>
+) {
+  const user = await getSession();
+  if (!user) return { error: "Not authenticated" };
+  if (!questionsToSave || questionsToSave.length === 0) {
+    return { error: "No questions selected" };
+  }
+
+  // 1. Find or create the "Saved Questions" subject
+  let savedSubject = await prisma.subject.findFirst({
+    where: { name: "Saved Questions" },
+  });
+  if (!savedSubject) {
+    savedSubject = await prisma.subject.create({
+      data: { name: "Saved Questions" },
+    });
+  }
+
+  // 2. Find or create the "Session Review" topic
+  let savedTopic = await prisma.topic.findFirst({
+    where: { subjectId: savedSubject.id, name: "Session Review" },
+  });
+  if (!savedTopic) {
+    savedTopic = await prisma.topic.create({
+      data: {
+        name: "Session Review",
+        subjectId: savedSubject.id,
+      },
+    });
+  }
+
+  // 3. Insert or find each question
+  let savedCount = 0;
+  for (const item of questionsToSave) {
+    const existing = await prisma.question.findFirst({
+      where: {
+        subjectId: savedSubject.id,
+        topicId: savedTopic.id,
+        question: item.question,
+      },
+    });
+
+    if (!existing) {
+      await prisma.question.create({
+        data: {
+          subjectId: savedSubject.id,
+          topicId: savedTopic.id,
+          question: item.question,
+          options: item.options,
+          correctAnswer: item.correctAnswer,
+        },
+      });
+      savedCount++;
+    }
+  }
+
+  revalidatePath("/session/new");
+  revalidatePath("/subjects");
+  return { success: true, savedCount, total: questionsToSave.length };
 }

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { DEFAULT_ECONOMY } from "@/lib/constants";
 import { saveSessionData } from "@/app/actions/session";
-import { CheckCircle2, XCircle, Coins, Zap } from "lucide-react";
+import { ArrowLeft, ArrowRight, CheckCircle2, XCircle, Coins, Zap } from "lucide-react";
 
 const SESSION_KEY = "current_mcq_session";
 const PROGRESS_KEY = "mcq_session_progress";
@@ -133,7 +133,7 @@ export default function PlaySessionPage() {
   }
 
   const currentQuestion = questions[currentIndex];
-  const hasAnswered = selectedOption !== null;
+  const hasAnswered = selectedOption !== null || attempts[currentIndex] !== undefined;
 
   const finishSession = async (finalAttempts: Attempt[]) => {
     setIsSaving(true);
@@ -180,6 +180,27 @@ export default function PlaySessionPage() {
       setCurrentIndex((prev) => prev + 1);
     } else {
       tryComplete(nextAttempts);
+    }
+  };
+
+  const handleBack = () => {
+    if (autoNextTimer.current) clearTimeout(autoNextTimer.current);
+    if (currentIndex === 0) return;
+    const prevIndex = currentIndex - 1;
+    setCurrentIndex(prevIndex);
+    const prevAttempt = attempts[prevIndex];
+    setSelectedOption(prevAttempt ? prevAttempt.selectedAnswer : null);
+  };
+
+  const handleForward = () => {
+    if (autoNextTimer.current) clearTimeout(autoNextTimer.current);
+    if (currentIndex < questions.length - 1) {
+      const nextIndex = currentIndex + 1;
+      setCurrentIndex(nextIndex);
+      const nextAttempt = attempts[nextIndex];
+      setSelectedOption(nextAttempt ? nextAttempt.selectedAnswer : null);
+    } else {
+      tryComplete(attempts);
     }
   };
 
@@ -232,43 +253,70 @@ export default function PlaySessionPage() {
           />
         </div>
 
-        {hasAnswered && (
-          <div className="absolute top-3 right-3 flex gap-2">
-            {isPractice ? (
-              <div
-                className={`px-3 py-1.5 rounded-xl font-bold text-sm border ${
-                  isCorrectCurrent
-                    ? "bg-success/20 text-success border-success/30"
-                    : "bg-danger/20 text-danger border-danger/30"
-                }`}
+        <div className="flex items-center justify-between mt-2 mb-4">
+          <div className="flex items-center gap-1">
+            {currentIndex > 0 && (
+              <button
+                onClick={handleBack}
+                className="flex items-center justify-center w-9 h-9 rounded-xl hover:bg-muted transition-colors active:scale-95 text-muted-foreground hover:text-foreground"
+                aria-label="Previous question"
+                title="Previous question"
               >
-                {isCorrectCurrent ? "Correct" : "Wrong"}
-              </div>
-            ) : isCorrectCurrent ? (
-              <>
-                <div className="bg-success/20 text-success px-3 py-1.5 rounded-xl font-bold text-sm flex items-center border border-success/30">
-                  <Zap className="w-3.5 h-3.5 mr-1" /> +{settings.xpPerCorrect}
-                </div>
-                <div className="bg-amber-500/20 text-amber-500 px-3 py-1.5 rounded-xl font-bold text-sm flex items-center border border-amber-500/30">
-                  <Coins className="w-3.5 h-3.5 mr-1" /> +{settings.coinsPerCorrect}
-                </div>
-              </>
-            ) : (
-              <div className="bg-danger/20 text-danger px-3 py-1.5 rounded-xl font-bold text-sm flex items-center border border-danger/30">
-                <Zap className="w-3.5 h-3.5 mr-1" /> -{settings.xpPerWrong}
-              </div>
+                <ArrowLeft className="w-5 h-5" />
+              </button>
+            )}
+            {currentIndex < questions.length - 1 && hasAnswered && (
+              <button
+                onClick={handleForward}
+                className="flex items-center justify-center w-9 h-9 rounded-xl hover:bg-muted transition-colors active:scale-95 text-muted-foreground hover:text-foreground"
+                aria-label="Next question"
+                title="Next question"
+              >
+                <ArrowRight className="w-5 h-5" />
+              </button>
             )}
           </div>
-        )}
 
-        <div className="flex justify-between items-center mb-6 border-b border-border pb-3 mt-4">
-          <span className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
-            {currentIndex + 1} / {questions.length}
-          </span>
-          {isPractice && (
-            <span className="text-xs bg-primary/10 text-primary px-2.5 py-1 rounded-lg font-semibold">
-              Practice
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
+              {currentIndex + 1} / {questions.length}
             </span>
+            {isPractice && (
+              <span className="text-xs bg-primary/10 text-primary px-2.5 py-1 rounded-lg font-semibold">
+                Practice
+              </span>
+            )}
+          </div>
+
+          {hasAnswered ? (
+            <div className="flex items-center gap-2">
+              {isPractice ? (
+                <div
+                  className={`px-3 py-1 rounded-xl font-bold text-xs border ${
+                    isCorrectCurrent
+                      ? "bg-success/20 text-success border-success/30"
+                      : "bg-danger/20 text-danger border-danger/30"
+                  }`}
+                >
+                  {isCorrectCurrent ? "Correct" : "Wrong"}
+                </div>
+              ) : isCorrectCurrent ? (
+                <>
+                  <div className="bg-success/20 text-success px-2.5 py-1 rounded-xl font-bold text-xs flex items-center border border-success/30">
+                    <Zap className="w-3 h-3 mr-1" /> +{settings.xpPerCorrect}
+                  </div>
+                  <div className="bg-amber-500/20 text-amber-500 px-2.5 py-1 rounded-xl font-bold text-xs flex items-center border border-amber-500/30">
+                    <Coins className="w-3 h-3 mr-1" /> +{settings.coinsPerCorrect}
+                  </div>
+                </>
+              ) : (
+                <div className="bg-danger/20 text-danger px-2.5 py-1 rounded-xl font-bold text-xs flex items-center border border-danger/30">
+                  <Zap className="w-3 h-3 mr-1" /> -{settings.xpPerWrong}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="w-16" />
           )}
         </div>
 
@@ -317,8 +365,8 @@ export default function PlaySessionPage() {
           })}
         </div>
 
-        {!hasAnswered && (
-          <div className="mt-8 flex justify-start">
+        <div className="mt-8 flex justify-between items-center">
+          {!hasAnswered ? (
             <Button
               size="lg"
               variant="outline"
@@ -327,8 +375,26 @@ export default function PlaySessionPage() {
             >
               Skip
             </Button>
-          </div>
-        )}
+          ) : (
+            <div />
+          )}
+
+          {hasAnswered && (
+            <Button
+              size="lg"
+              onClick={handleForward}
+              className="px-6 h-11 text-base rounded-xl font-bold gap-2"
+            >
+              {currentIndex < questions.length - 1 ? (
+                <>
+                  Next <ArrowRight className="w-4 h-4" />
+                </>
+              ) : (
+                "Finish Session"
+              )}
+            </Button>
+          )}
+        </div>
       </Card>
 
       {showFinishConfirm && (

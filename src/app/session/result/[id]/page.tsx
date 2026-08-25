@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import Link from "next/link";
-import { Home, Zap, Coins, CheckCircle2, XCircle, Target, Sparkles } from "lucide-react";
+import { Home, Zap, Coins, CheckCircle2, XCircle, Target, Sparkles, ListChecks } from "lucide-react";
 import { getEconomySettings } from "@/app/actions/settings";
 import { AppShell } from "@/components/NavMenu";
 
@@ -118,12 +118,21 @@ export default async function ResultPage({ params }: { params: Promise<{ id: str
             </Card>
           )}
 
-          <Link href="/" className="block">
-            <Button size="lg" className="w-full h-14 text-lg font-bold rounded-2xl shadow-lg shadow-primary/20">
-              <Home className="w-5 h-5 mr-2" />
-              Return Home
-            </Button>
-          </Link>
+          <div className="space-y-3">
+            <Link href={`/session/review/${session.id}`} className="block">
+              <Button variant="outline" size="lg" className="w-full h-14 text-lg font-bold rounded-2xl border-primary/30 hover:bg-primary/10">
+                <ListChecks className="w-5 h-5 mr-2 text-primary" />
+                Review Answers
+              </Button>
+            </Link>
+
+            <Link href="/" className="block">
+              <Button size="lg" className="w-full h-14 text-lg font-bold rounded-2xl shadow-lg shadow-primary/20">
+                <Home className="w-5 h-5 mr-2" />
+                Return Home
+              </Button>
+            </Link>
+          </div>
         </div>
       </div>
     </AppShell>
