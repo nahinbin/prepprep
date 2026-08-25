@@ -6,7 +6,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
-import { AppShell } from "@/components/NavMenu";
+import { AppShell, NavMenu } from "@/components/NavMenu";
 import {
   Database,
   Search,
@@ -174,24 +174,27 @@ export function QuestionsClient({
             </h1>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
             <Link href="/session/new?mode=practice">
-              <Button variant="outline" size="sm" className="rounded-xl font-bold gap-1.5">
+              <Button variant="outline" size="sm" className="rounded-xl font-bold gap-1.5 text-xs sm:text-sm">
                 <Sparkles className="w-4 h-4 text-primary" />
-                Free Practice
+                <span className="hidden sm:inline">Free</span> Practice
               </Button>
             </Link>
             <Button
               size="sm"
               onClick={() => handleStartPractice()}
               disabled={filteredQuestions.length === 0}
-              className="rounded-xl font-bold gap-1.5 shadow-md shadow-primary/20"
+              className="rounded-xl font-bold gap-1.5 text-xs sm:text-sm shadow-md shadow-primary/20"
             >
               <Play className="w-4 h-4 fill-current" />
               {selectedIndices.size > 0
-                ? `Practice Selected (${selectedIndices.size})`
+                ? `Practice (${selectedIndices.size})`
                 : `Practice All (${filteredQuestions.length})`}
             </Button>
+            <div className="md:hidden">
+              <NavMenu />
+            </div>
           </div>
         </div>
 
@@ -363,15 +366,9 @@ export function QuestionsClient({
                           <Square className="w-5 h-5" />
                         )}
                       </button>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-black uppercase tracking-wider text-muted-foreground bg-muted/60 px-2 py-0.5 rounded-md border border-border">
                           #{idx + 1}
-                        </span>
-                        <span className="px-2.5 py-0.5 rounded-lg text-xs font-bold bg-primary/10 text-primary border border-primary/20">
-                          {q.subjectName}
-                        </span>
-                        <span className="px-2.5 py-0.5 rounded-lg text-xs font-semibold bg-muted text-muted-foreground border border-border">
-                          {q.topicName}
                         </span>
                       </div>
                     </div>

@@ -2,9 +2,9 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { Card } from "@/components/ui/Card";
 import { NavMenu, AppShell } from "@/components/NavMenu";
 import { BackButton } from "@/components/BackButton";
 import {
@@ -17,6 +17,7 @@ import {
   AlertTriangle,
   X,
   Sparkles,
+  Check,
 } from "lucide-react";
 import {
   createSubject,
@@ -158,8 +159,10 @@ function SlideToConfirm({
 export function SubjectManagement({ subjects }: { subjects: Subject[] }) {
   const router = useRouter();
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [showAddSubjectModal, setShowAddSubjectModal] = useState(false);
   const [newSubjectName, setNewSubjectName] = useState("");
   const [newTopicNames, setNewTopicNames] = useState<Record<string, string>>({});
+  const [activeAddTopicSubjectId, setActiveAddTopicSubjectId] = useState<string | null>(null);
   const [editingSubject, setEditingSubject] = useState<string | null>(null);
   const [editingTopic, setEditingTopic] = useState<string | null>(null);
   const [editValues, setEditValues] = useState<Record<string, string>>({});
@@ -179,9 +182,11 @@ export function SubjectManagement({ subjects }: { subjects: Subject[] }) {
     setLoading("new-subject");
     setError("");
     const res = await createSubject(newSubjectName);
-    if (res.error) setError(res.error);
-    else {
+    if (res.error) {
+      setError(res.error);
+    } else {
       setNewSubjectName("");
+      setShowAddSubjectModal(false);
       router.refresh();
     }
     setLoading(null);
@@ -226,9 +231,11 @@ export function SubjectManagement({ subjects }: { subjects: Subject[] }) {
     setLoading(`topic-${subjectId}`);
     setError("");
     const res = await createTopic(subjectId, name);
-    if (res.error) setError(res.error);
-    else {
+    if (res.error) {
+      setError(res.error);
+    } else {
       setNewTopicNames((prev) => ({ ...prev, [subjectId]: "" }));
+      setActiveAddTopicSubjectId(null);
       setExpanded((prev) => new Set(prev).add(subjectId));
       router.refresh();
     }
@@ -251,74 +258,85 @@ export function SubjectManagement({ subjects }: { subjects: Subject[] }) {
 
   return (
     <AppShell>
-      <div className="min-h-screen flex flex-col items-center py-6 px-4 md:px-8">
-        <div className="w-full max-w-4xl flex justify-between items-center mb-6">
+      <div className="min-h-screen py-6 px-4 md:px-8 max-w-4xl mx-auto space-y-6">
+        {/* Header with New Subject trigger button */}
+        <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <BackButton />
-            <h1 className="text-2xl md:text-3xl font-black tracking-tight flex items-center gap-2">
-              <Layers className="w-7 h-7 text-primary" />
-              Subjects & Topics
-            </h1>
+            <div>
+              <h1 className="text-2xl md:text-3xl font-black tracking-tight flex items-center gap-2">
+                <Layers className="w-7 h-7 text-primary" />
+                Subjects
+              </h1>
+            </div>
           </div>
-          <div className="md:hidden">
-            <NavMenu />
+
+          <div className="flex items-center gap-2.5">
+            <Button
+              onClick={() => {
+                setShowAddSubjectModal(true);
+                setError("");
+              }}
+              size="sm"
+              className="rounded-2xl h-11 px-4 text-xs sm:text-sm font-black shadow-md shadow-primary/20 hover:scale-105 active:scale-95 transition-all gap-1.5"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Add Subject</span>
+            </Button>
+            <div className="md:hidden">
+              <NavMenu />
+            </div>
           </div>
         </div>
 
-        <Card className="w-full max-w-4xl p-6 md:p-8 rounded-3xl border-2 shadow-xl backdrop-blur-md">
-          {/* Create Subject Input */}
-          <div className="flex gap-3 mb-8">
-            <Input
-              placeholder="Enter new subject name..."
-              value={newSubjectName}
-              onChange={(e) => setNewSubjectName(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleCreateSubject()}
-              className="flex-1 h-14 text-base font-bold rounded-2xl border-2"
-            />
+        {error && (
+          <p className="text-danger text-sm font-bold text-center bg-danger/10 p-4 rounded-2xl border border-danger/20 animate-fade-in">
+            {error}
+          </p>
+        )}
+
+        {/* List of Individual Subject Cards (NO big giant form wrapper!) */}
+        {subjects.length === 0 ? (
+          <div className="text-center py-20 px-4 text-muted-foreground border-2 border-dashed border-border rounded-3xl space-y-4">
+            <div className="w-16 h-16 rounded-3xl bg-primary/10 border border-primary/20 flex items-center justify-center mx-auto text-primary">
+              <Layers className="w-8 h-8" />
+            </div>
+            <div>
+              <h3 className="text-xl font-black text-foreground">No subjects yet</h3>
+              <p className="text-sm text-muted-foreground mt-1">Click "Add Subject" above to create your first subject!</p>
+            </div>
             <Button
-              onClick={handleCreateSubject}
-              isLoading={loading === "new-subject"}
-              disabled={!newSubjectName.trim()}
-              size="lg"
-              className="h-14 px-6 rounded-2xl text-base font-black shrink-0 shadow-md shadow-primary/20 hover:scale-105 active:scale-95 transition-all"
+              onClick={() => setShowAddSubjectModal(true)}
+              className="rounded-2xl font-black px-6 h-12 shadow-md shadow-primary/20"
             >
-              <Plus className="w-5 h-5 mr-1.5" />
-              Add Subject
+              <Plus className="w-4 h-4 mr-1.5" /> Create Subject
             </Button>
           </div>
-
-          {error && (
-            <p className="text-danger text-sm font-bold text-center bg-danger/10 p-4 rounded-2xl mb-6 border border-danger/20 animate-fade-in">
-              {error}
-            </p>
-          )}
-
-          {subjects.length === 0 ? (
-            <div className="text-center py-16 text-muted-foreground border-2 border-dashed border-border rounded-3xl">
-              <Layers className="w-12 h-12 mx-auto mb-3 opacity-40 text-primary" />
-              <p className="text-lg font-bold text-foreground">No subjects created yet</p>
-              <p className="text-sm text-muted-foreground mt-1">Create your first subject above to organize your questions.</p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {subjects.map((subject) => {
-                const isExpanded = expanded.has(subject.id);
-                return (
-                  <div
-                    key={subject.id}
-                    className="border-2 border-border rounded-3xl bg-card/60 overflow-hidden shadow-sm transition-all hover:border-border/90"
-                  >
-                    <div className="flex items-center gap-3 sm:gap-4 p-5 sm:p-6">
-                      <button
-                        onClick={() => toggleExpand(subject.id)}
-                        className="flex items-center gap-3 sm:gap-4 flex-1 text-left min-w-0 group"
-                      >
+        ) : (
+          <div className="space-y-3.5">
+            {subjects.map((subject) => {
+              const isExpanded = expanded.has(subject.id);
+              return (
+                <div
+                  key={subject.id}
+                  className="border-2 border-border/90 rounded-3xl bg-card overflow-hidden shadow-sm transition-all hover:border-border"
+                >
+                  {/* Subject Card Header */}
+                  <div className="flex items-center justify-between gap-3 p-4 sm:p-5">
+                    <button
+                      onClick={() => toggleExpand(subject.id)}
+                      className="flex items-center gap-3 sm:gap-3.5 flex-1 text-left min-w-0 group"
+                    >
+                      <div className="w-8 h-8 rounded-xl bg-muted/60 flex items-center justify-center shrink-0 group-hover:bg-primary/15 transition-colors">
                         {isExpanded ? (
-                          <ChevronDown className="w-6 h-6 text-primary shrink-0 transition-transform" />
+                          <ChevronDown className="w-5 h-5 text-primary" />
                         ) : (
-                          <ChevronRight className="w-6 h-6 text-muted-foreground shrink-0 group-hover:text-primary transition-colors" />
+                          <ChevronRight className="w-5 h-5 text-muted-foreground group-hover:text-primary" />
                         )}
-                        {editingSubject === subject.id ? (
+                      </div>
+
+                      {editingSubject === subject.id ? (
+                        <div className="flex-1 max-w-sm" onClick={(e) => e.stopPropagation()}>
                           <Input
                             value={editValues[`subject-${subject.id}`] ?? subject.name}
                             onChange={(e) =>
@@ -327,105 +345,99 @@ export function SubjectManagement({ subjects }: { subjects: Subject[] }) {
                                 [`subject-${subject.id}`]: e.target.value,
                               }))
                             }
-                            onClick={(e) => e.stopPropagation()}
                             onKeyDown={(e) => {
-                              e.stopPropagation();
                               if (e.key === "Enter") handleUpdateSubject(subject.id);
                               if (e.key === "Escape") setEditingSubject(null);
                             }}
-                            className="max-w-sm h-12 text-base font-bold rounded-2xl border-2"
+                            className="h-11 text-base font-bold rounded-xl border-2"
                             autoFocus
                           />
-                        ) : (
-                          <div className="min-w-0">
-                            <span className="font-black text-lg sm:text-xl truncate block text-foreground">
-                              {subject.name}
-                            </span>
-                            <span className="text-xs font-semibold text-muted-foreground">
-                              {subject.topics.length} topic{subject.topics.length !== 1 ? "s" : ""}
-                            </span>
-                          </div>
-                        )}
-                      </button>
-
-                      <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-                        <div className="px-4 py-1.5 bg-primary/10 border-2 border-primary/20 rounded-2xl">
-                          <span className="text-lg sm:text-xl font-black text-primary">
-                            {subject._count.questions} Qs
+                        </div>
+                      ) : (
+                        <div className="min-w-0">
+                          <span className="font-black text-lg sm:text-xl truncate block text-foreground">
+                            {subject.name}
+                          </span>
+                          <span className="text-xs font-semibold text-muted-foreground">
+                            {subject.topics.length} topic{subject.topics.length !== 1 ? "s" : ""}
                           </span>
                         </div>
+                      )}
+                    </button>
 
-                        {editingSubject === subject.id ? (
-                          <>
-                            <Button
-                              size="sm"
-                              className="rounded-2xl font-bold"
-                              onClick={() => handleUpdateSubject(subject.id)}
-                              isLoading={loading === `subject-${subject.id}`}
-                            >
-                              Save
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="rounded-2xl font-bold"
-                              onClick={() => setEditingSubject(null)}
-                            >
-                              Cancel
-                            </Button>
-                          </>
-                        ) : (
-                          <>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="rounded-2xl w-10 h-10 p-0 hover:bg-primary/10 hover:text-primary transition-colors"
-                              onClick={() => {
-                                setEditingSubject(subject.id);
-                                setEditValues((prev) => ({
-                                  ...prev,
-                                  [`subject-${subject.id}`]: subject.name,
-                                }));
-                              }}
-                              title="Rename subject"
-                            >
-                              <Pencil className="w-4 h-4 sm:w-5 sm:h-5" />
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="rounded-2xl w-10 h-10 p-0 text-danger hover:text-danger hover:bg-danger/10 transition-colors"
-                              onClick={() =>
-                                setDeleteTarget({
-                                  type: "subject",
-                                  id: subject.id,
-                                  name: subject.name,
-                                  questionCount: subject._count.questions,
-                                  topicCount: subject.topics.length,
-                                })
-                              }
-                              title="Delete subject"
-                            >
-                              <Trash2 className="w-4 h-4 sm:w-5 sm:h-5" />
-                            </Button>
-                          </>
-                        )}
-                      </div>
+                    {/* Actions */}
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {editingSubject === subject.id ? (
+                        <>
+                          <Button
+                            size="sm"
+                            className="rounded-xl font-bold h-9 px-3 text-xs"
+                            onClick={() => handleUpdateSubject(subject.id)}
+                            isLoading={loading === `subject-${subject.id}`}
+                          >
+                            Save
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="rounded-xl font-bold h-9 px-3 text-xs"
+                            onClick={() => setEditingSubject(null)}
+                          >
+                            Cancel
+                          </Button>
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            onClick={() => {
+                              setEditingSubject(subject.id);
+                              setEditValues((prev) => ({
+                                ...prev,
+                                [`subject-${subject.id}`]: subject.name,
+                              }));
+                            }}
+                            className="p-2 rounded-xl text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                            title="Rename Subject"
+                            aria-label="Rename Subject"
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() =>
+                              setDeleteTarget({
+                                type: "subject",
+                                id: subject.id,
+                                name: subject.name,
+                                questionCount: subject._count.questions,
+                                topicCount: subject.topics.length,
+                              })
+                            }
+                            className="p-2 rounded-xl text-muted-foreground hover:text-danger hover:bg-danger/10 transition-colors"
+                            title="Delete Subject"
+                            aria-label="Delete Subject"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </>
+                      )}
                     </div>
+                  </div>
 
-                    {isExpanded && (
-                      <div className="border-t-2 border-border/60 px-5 sm:px-6 pb-6 pt-4 space-y-3 bg-muted/20">
-                        {subject.topics.length === 0 ? (
-                          <p className="text-xs font-semibold text-muted-foreground py-2 pl-4">
-                            No topics added yet. Add a topic below.
-                          </p>
-                        ) : (
-                          subject.topics.map((topic) => (
-                            <div
-                              key={topic.id}
-                              className="flex items-center gap-3 py-2.5 px-4 rounded-2xl bg-card border-2 border-border/70 transition-all hover:border-primary/30"
-                            >
-                              {editingTopic === topic.id ? (
+                  {/* Expanded Topics Area */}
+                  {isExpanded && (
+                    <div className="border-t border-border/80 p-4 sm:p-5 space-y-2.5 bg-muted/15">
+                      {subject.topics.length === 0 ? (
+                        <p className="text-xs font-semibold text-muted-foreground py-2 pl-1">
+                          No topics yet under this subject.
+                        </p>
+                      ) : (
+                        subject.topics.map((topic) => (
+                          <div
+                            key={topic.id}
+                            className="flex items-center justify-between gap-3 p-3 rounded-2xl bg-card border border-border/80 shadow-xs"
+                          >
+                            {editingTopic === topic.id ? (
+                              <div className="flex-1">
                                 <Input
                                   value={editValues[`topic-${topic.id}`] ?? topic.name}
                                   onChange={(e) =>
@@ -438,26 +450,22 @@ export function SubjectManagement({ subjects }: { subjects: Subject[] }) {
                                     if (e.key === "Enter") handleUpdateTopic(topic.id);
                                     if (e.key === "Escape") setEditingTopic(null);
                                   }}
-                                  className="flex-1 h-11 text-base font-bold rounded-xl border-2"
+                                  className="h-10 text-sm font-bold rounded-xl border-2"
                                   autoFocus
                                 />
-                              ) : (
-                                <span className="flex-1 text-base font-bold truncate text-foreground">
-                                  {topic.name}
-                                </span>
-                              )}
-
-                              <div className="px-3 py-1 bg-muted rounded-xl border border-border">
-                                <span className="text-sm font-black text-muted-foreground">
-                                  {topic._count.questions} Qs
-                                </span>
                               </div>
+                            ) : (
+                              <span className="text-sm sm:text-base font-bold truncate text-foreground pl-1">
+                                {topic.name}
+                              </span>
+                            )}
 
+                            <div className="flex items-center gap-1 shrink-0">
                               {editingTopic === topic.id ? (
                                 <>
                                   <Button
                                     size="sm"
-                                    className="rounded-xl font-bold"
+                                    className="rounded-xl font-bold h-8 px-2.5 text-xs"
                                     onClick={() => handleUpdateTopic(topic.id)}
                                     isLoading={loading === `topic-edit-${topic.id}`}
                                   >
@@ -466,7 +474,7 @@ export function SubjectManagement({ subjects }: { subjects: Subject[] }) {
                                   <Button
                                     size="sm"
                                     variant="ghost"
-                                    className="rounded-xl font-bold"
+                                    className="rounded-xl font-bold h-8 px-2.5 text-xs"
                                     onClick={() => setEditingTopic(null)}
                                   >
                                     Cancel
@@ -474,10 +482,7 @@ export function SubjectManagement({ subjects }: { subjects: Subject[] }) {
                                 </>
                               ) : (
                                 <>
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    className="rounded-xl w-9 h-9 p-0 hover:bg-primary/10 hover:text-primary transition-colors"
+                                  <button
                                     onClick={() => {
                                       setEditingTopic(topic.id);
                                       setEditValues((prev) => ({
@@ -485,14 +490,12 @@ export function SubjectManagement({ subjects }: { subjects: Subject[] }) {
                                         [`topic-${topic.id}`]: topic.name,
                                       }));
                                     }}
-                                    title="Rename topic"
+                                    className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                                    title="Rename Topic"
                                   >
-                                    <Pencil className="w-4 h-4" />
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    className="rounded-xl w-9 h-9 p-0 text-danger hover:text-danger hover:bg-danger/10 transition-colors"
+                                    <Pencil className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
                                     onClick={() =>
                                       setDeleteTarget({
                                         type: "topic",
@@ -501,20 +504,23 @@ export function SubjectManagement({ subjects }: { subjects: Subject[] }) {
                                         questionCount: topic._count.questions,
                                       })
                                     }
-                                    title="Delete topic"
+                                    className="p-1.5 rounded-lg text-muted-foreground hover:text-danger hover:bg-danger/10 transition-colors"
+                                    title="Delete Topic"
                                   >
-                                    <Trash2 className="w-4 h-4" />
-                                  </Button>
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
                                 </>
                               )}
                             </div>
-                          ))
-                        )}
+                          </div>
+                        ))
+                      )}
 
-                        {/* Add Topic input */}
-                        <div className="flex gap-2.5 pt-2">
+                      {/* Add Topic Control inside Subject */}
+                      {activeAddTopicSubjectId === subject.id ? (
+                        <div className="flex gap-2 pt-2">
                           <Input
-                            placeholder="Add new topic name..."
+                            placeholder="New topic name..."
                             value={newTopicNames[subject.id] ?? ""}
                             onChange={(e) =>
                               setNewTopicNames((prev) => ({
@@ -525,27 +531,93 @@ export function SubjectManagement({ subjects }: { subjects: Subject[] }) {
                             onKeyDown={(e) =>
                               e.key === "Enter" && handleCreateTopic(subject.id)
                             }
-                            className="flex-1 h-12 text-base font-bold rounded-2xl border-2"
+                            className="flex-1 h-11 text-sm font-bold rounded-2xl border-2"
+                            autoFocus
                           />
                           <Button
                             onClick={() => handleCreateTopic(subject.id)}
                             isLoading={loading === `topic-${subject.id}`}
                             disabled={!newTopicNames[subject.id]?.trim()}
-                            className="h-12 px-5 rounded-2xl font-black shrink-0 hover:scale-105 active:scale-95 transition-all shadow-sm"
+                            className="h-11 px-4 rounded-2xl font-black shrink-0 text-xs shadow-sm"
                           >
-                            <Plus className="w-4 h-4 mr-1.5" />
-                            Add Topic
+                            <Check className="w-4 h-4 mr-1" /> Add
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            onClick={() => setActiveAddTopicSubjectId(null)}
+                            className="h-11 px-3 rounded-2xl font-bold text-xs"
+                          >
+                            Cancel
                           </Button>
                         </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </Card>
+                      ) : (
+                        <button
+                          onClick={() => setActiveAddTopicSubjectId(subject.id)}
+                          className="w-full py-2.5 rounded-2xl border-2 border-dashed border-border/80 hover:border-primary/50 text-xs font-black text-muted-foreground hover:text-primary transition-all flex items-center justify-center gap-1.5 hover:bg-primary/5 mt-2"
+                        >
+                          <Plus className="w-4 h-4" /> Add Topic
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
+
+      {/* Modal: Create New Subject Popup */}
+      {showAddSubjectModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in">
+          <Card className="w-full max-w-md p-6 sm:p-7 rounded-3xl border-2 shadow-2xl space-y-4 bg-card">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xl font-black text-foreground flex items-center gap-2">
+                <Plus className="w-5 h-5 text-primary" />
+                Add New Subject
+              </h3>
+              <button
+                onClick={() => setShowAddSubjectModal(false)}
+                className="w-8 h-8 rounded-xl hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-black text-muted-foreground uppercase tracking-wider block">
+                Subject Name
+              </label>
+              <Input
+                placeholder="e.g. History, Mathematics, Physics..."
+                value={newSubjectName}
+                onChange={(e) => setNewSubjectName(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleCreateSubject()}
+                className="h-13 text-base font-bold rounded-2xl border-2"
+                autoFocus
+              />
+            </div>
+
+            <div className="flex gap-2.5 pt-2">
+              <Button
+                variant="outline"
+                onClick={() => setShowAddSubjectModal(false)}
+                className="flex-1 h-12 rounded-2xl font-bold text-sm border-2"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleCreateSubject}
+                isLoading={loading === "new-subject"}
+                disabled={!newSubjectName.trim()}
+                className="flex-1 h-12 rounded-2xl font-black text-sm shadow-md shadow-primary/20"
+              >
+                Create Subject
+              </Button>
+            </div>
+          </Card>
+        </div>
+      )}
 
       {/* Interactive Delete Confirmation Modal with Slide to Confirm */}
       {deleteTarget && (
@@ -581,7 +653,7 @@ export function SubjectManagement({ subjects }: { subjects: Subject[] }) {
                   {deleteTarget.topicCount ? ` across ${deleteTarget.topicCount} topic(s)` : ""}!
                 </p>
                 <p className="text-xs font-semibold text-muted-foreground leading-relaxed">
-                  Deleting will permanently erase all questions, mistakes, and data associated with this {deleteTarget.type}. This action cannot be undone.
+                  Deleting will permanently erase all questions, mistakes, and data associated with this {deleteTarget.type}.
                 </p>
               </div>
             ) : (

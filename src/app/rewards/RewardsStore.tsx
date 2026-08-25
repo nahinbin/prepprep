@@ -180,7 +180,16 @@ export function RewardsStore({ rewards, user }: { rewards: Reward[]; user: UserS
             <h1 className="text-xl md:text-2xl font-black tracking-tight">Store</h1>
           </div>
           <div className="flex items-center gap-2">
-            <GameHUD coins={user.coins} xp={user.netXp} accuracy={user.accuracy} compact />
+            {/* On mobile: only show points/coins, no XP or accuracy */}
+            <div className="flex md:hidden items-center gap-1.5 bg-amber-500/15 border border-amber-500/30 px-3 py-1.5 rounded-2xl shadow-sm">
+              <Coins className="w-4 h-4 text-amber-400 shrink-0" />
+              <span className="text-sm font-black text-amber-400 tabular-nums">{user.coins}</span>
+            </div>
+
+            {/* On desktop: show full GameHUD */}
+            <div className="hidden md:block">
+              <GameHUD coins={user.coins} xp={user.netXp} accuracy={user.accuracy} compact />
+            </div>
             <NavMenu />
           </div>
         </div>
