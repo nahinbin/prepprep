@@ -83,16 +83,44 @@ export async function deleteSubject(id: string) {
 
   const subject = await prisma.subject.findFirst({
     where: { id, userId: user.id },
+    include: {
+      questions: { select: { id: true } },
+    },
   });
   if (!subject) return { error: "Subject not found." };
 
-  const questionCount = await prisma.question.count({ where: { subjectId: id } });
-  if (questionCount > 0) {
-    return { error: `Cannot delete: this subject has ${questionCount} question(s). Remove questions first.` };
-  }
+  const questionIds = subject.questions.map((q) => q.id);
 
-  await prisma.topic.deleteMany({ where: { subjectId: id } });
-  await prisma.subject.delete({ where: { id } });
+  await prisma.$transaction(async (tx) => {
+    if (questionIds.length > 0) {
+      // 1. Delete associated mistakes
+      await tx.mistake.deleteMany({
+        where: { questionId: { in: questionIds } },
+      });
+
+      // 2. Clear questionRefId on attempt records
+      await tx.attempt.updateMany({
+        where: { questionRefId: { in: questionIds } },
+        data: { questionRefId: null },
+      });
+
+      // 3. Delete questions
+      await tx.question.deleteMany({
+        where: { id: { in: questionIds } },
+      });
+    }
+
+    // 4. Delete topics
+    await tx.topic.deleteMany({
+      where: { subjectId: id },
+    });
+
+    // 5. Delete the subject itself
+    await tx.subject.delete({
+      where: { id },
+    });
+  });
+
   revalidatePath("/subjects");
   revalidatePath("/session/new");
   revalidatePath("/questions");
@@ -157,16 +185,33 @@ export async function deleteTopic(id: string) {
 
   const topic = await prisma.topic.findUnique({
     where: { id },
-    include: { subject: true },
+    include: {
+      subject: true,
+      questions: { select: { id: true } },
+    },
   });
   if (!topic || topic.subject.userId !== user.id) return { error: "Topic not found." };
 
-  const questionCount = await prisma.question.count({ where: { topicId: id } });
-  if (questionCount > 0) {
-    return { error: `Cannot delete: this topic has ${questionCount} question(s). Remove questions first.` };
-  }
+  const questionIds = topic.questions.map((q) => q.id);
 
-  await prisma.topic.delete({ where: { id } });
+  await prisma.$transaction(async (tx) => {
+    if (questionIds.length > 0) {
+      await tx.mistake.deleteMany({
+        where: { questionId: { in: questionIds } },
+      });
+      await tx.attempt.updateMany({
+        where: { questionRefId: { in: questionIds } },
+        data: { questionRefId: null },
+      });
+      await tx.question.deleteMany({
+        where: { id: { in: questionIds } },
+      });
+    }
+    await tx.topic.delete({
+      where: { id },
+    });
+  });
+
   revalidatePath("/subjects");
   revalidatePath("/session/new");
   revalidatePath("/questions");

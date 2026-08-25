@@ -37,6 +37,7 @@ export async function login(formData: FormData) {
         httpOnly: true,
         path: "/",
         sameSite: "lax",
+        maxAge: 60 * 60 * 24 * 365, // 1 year
       }
     );
     cookieStore.delete("userId");
@@ -55,6 +56,8 @@ export async function login(formData: FormData) {
   cookieStore.set("userId", user.id, {
     httpOnly: true,
     path: "/",
+    sameSite: "lax",
+    maxAge: 60 * 60 * 24 * 365, // 1 year persistent session
   });
 
   redirect("/");
@@ -97,6 +100,8 @@ export async function register(formData: FormData) {
   cookieStore.set("userId", user.id, {
     httpOnly: true,
     path: "/",
+    sameSite: "lax",
+    maxAge: 60 * 60 * 24 * 365, // 1 year persistent session
   });
 
   redirect("/");
