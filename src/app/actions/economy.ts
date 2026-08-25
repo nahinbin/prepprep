@@ -5,69 +5,41 @@ import { getSession } from "@/app/actions/auth";
 import { sessionCostForCount } from "@/lib/constants";
 import { getEconomySettings } from "@/app/actions/settings";
 
-async function findOrCreateSubjectTopic(subjectName: string, topicName: string) {
-  const allSubjects = await prisma.subject.findMany();
-  let subject = allSubjects.find(
-    (s) => s.name.toLowerCase() === subjectName.trim().toLowerCase()
-  );
+export async function findOrCreateSubjectTopic(
+  userId: string,
+  subjectName: string,
+  topicName: string
+) {
+  const trimmedSub = subjectName.trim();
+  const trimmedTop = topicName.trim();
+
+  let subject = await prisma.subject.findFirst({
+    where: {
+      userId,
+      name: { equals: trimmedSub, mode: "insensitive" },
+    },
+  });
+
   if (!subject) {
-    subject = await prisma.subject.create({ data: { name: subjectName.trim() } });
+    subject = await prisma.subject.create({
+      data: { name: trimmedSub, userId },
+    });
   }
 
-  let topic = await prisma.topic.findUnique({
-    where: { subjectId_name: { subjectId: subject.id, name: topicName.trim() } },
+  let topic = await prisma.topic.findFirst({
+    where: {
+      subjectId: subject.id,
+      name: { equals: trimmedTop, mode: "insensitive" },
+    },
   });
+
   if (!topic) {
     topic = await prisma.topic.create({
-      data: { name: topicName.trim(), subjectId: subject.id },
+      data: { name: trimmedTop, subjectId: subject.id },
     });
   }
 
   return { subject, topic };
-}
-
-async function upsertQuestions(
-  subjectId: string,
-  topicId: string,
-  questions: Array<{
-    id?: number;
-    question: string;
-    options: Record<string, string>;
-    answer: string;
-  }>
-) {
-  const selectedQuestions = [];
-
-  for (const q of questions) {
-    const existing = await prisma.question.findFirst({
-      where: { subjectId, topicId, question: q.question },
-    });
-
-    let dbQ;
-    if (existing) {
-      dbQ = existing;
-    } else {
-      dbQ = await prisma.question.create({
-        data: {
-          externalId: q.id || null,
-          subjectId,
-          topicId,
-          question: q.question,
-          options: JSON.stringify(q.options),
-          correctAnswer: q.answer,
-        },
-      });
-    }
-
-    selectedQuestions.push({
-      id: dbQ.id,
-      question: dbQ.question,
-      options: JSON.parse(dbQ.options),
-      answer: dbQ.correctAnswer,
-    });
-  }
-
-  return selectedQuestions;
 }
 
 export async function startSessionCoins({
@@ -75,17 +47,25 @@ export async function startSessionCoins({
   topicId,
   count,
   cost,
+  isPractice = false,
 }: {
   subjectId: string;
   topicId: string;
   count: number;
   cost: number;
+  isPractice?: boolean;
 }) {
   const user = await getSession();
   if (!user) return { error: "Not authenticated" };
 
+  // Ensure subject belongs to this user
+  const subject = await prisma.subject.findFirst({
+    where: { id: subjectId, userId: user.id },
+  });
+  if (!subject) return { error: "Subject not found in your account." };
+
   const dbUser = await prisma.user.findUnique({ where: { id: user.id } });
-  if (!dbUser || dbUser.coins < cost) {
+  if (!isPractice && (!dbUser || dbUser.coins < cost)) {
     return { error: "Not enough coins." };
   }
 
@@ -96,37 +76,53 @@ export async function startSessionCoins({
 
   const allQuestions = await prisma.question.findMany({
     where: whereClause,
+    orderBy: { createdAt: "desc" },
   });
 
-  if (allQuestions.length < count) {
+  if (allQuestions.length === 0) {
     return {
-      error: `Only ${allQuestions.length} questions available for this selection. Please choose a smaller count.`,
+      error: "No questions found in this selection. Save some questions first or import them.",
     };
   }
 
+  const finalCount = Math.min(count, allQuestions.length);
   const shuffled = allQuestions.sort(() => 0.5 - Math.random());
-  const selectedQuestions = shuffled.slice(0, count).map((q) => ({
+  const selectedQuestions = shuffled.slice(0, finalCount).map((q) => ({
     id: q.id,
     question: q.question,
     options: JSON.parse(q.options),
     answer: q.correctAnswer,
   }));
 
-  await prisma.$transaction([
-    prisma.user.update({
-      where: { id: user.id },
-      data: { coins: { decrement: cost } },
-    }),
-    prisma.coinTransaction.create({
-      data: {
-        userId: user.id,
-        amount: -cost,
-        reason: `Started ${count}-question session`,
-      },
-    }),
-  ]);
+  if (!isPractice && cost > 0) {
+    await prisma.$transaction([
+      prisma.user.update({
+        where: { id: user.id },
+        data: { coins: { decrement: cost } },
+      }),
+      prisma.coinTransaction.create({
+        data: {
+          userId: user.id,
+          amount: -cost,
+          reason: `Started ${finalCount}-question session`,
+        },
+      }),
+    ]);
+  }
 
-  return { success: true, questions: selectedQuestions };
+  const settings = await getEconomySettings();
+
+  return {
+    success: true,
+    questions: selectedQuestions,
+    cost: isPractice ? 0 : cost,
+    isPractice,
+    settings: {
+      xpPerCorrect: settings.xpPerCorrect,
+      xpPerWrong: settings.xpPerWrong,
+      coinsPerCorrect: settings.coinsPerCorrect,
+    },
+  };
 }
 
 export async function startImportedSessionCoins({
@@ -161,8 +157,19 @@ export async function startImportedSessionCoins({
     }
   }
 
-  const { subject, topic } = await findOrCreateSubjectTopic(subjectName, topicName);
-  const selectedQuestions = await upsertQuestions(subject.id, topic.id, questions);
+  // Ensure user's private subject and topic exist for organization
+  await findOrCreateSubjectTopic(user.id, subjectName, topicName);
+
+  // We do NOT flood the database with questions that aren't explicitly saved!
+  // Instead, questions are passed in-memory to the session with formatted IDs.
+  const formattedQuestions = questions.map((q, idx) => ({
+    id: `session-q-${idx + 1}-${Date.now()}`,
+    question: q.question.trim(),
+    options: q.options,
+    answer: q.answer.trim(),
+    subjectName: subjectName.trim(),
+    topicName: topicName.trim(),
+  }));
 
   if (!isPractice && cost > 0) {
     await prisma.$transaction([
@@ -182,7 +189,7 @@ export async function startImportedSessionCoins({
 
   return {
     success: true,
-    questions: selectedQuestions,
+    questions: formattedQuestions,
     cost,
     isPractice,
     settings: {

@@ -28,6 +28,7 @@ model User {
   transactions    CoinTransaction[]
   mistakes        Mistake[]
   orders          Order[]
+  subjects        Subject[]
 }
 
 model Reward {
@@ -69,16 +70,20 @@ model CoinTransaction {
 
 model Subject {
   id        String     @id @default(cuid())
-  name      String     @unique
+  userId    String
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
   topics    Topic[]
   questions Question[]
+
+  @@unique([userId, name])
 }
 
 model Topic {
   id        String     @id @default(cuid())
   name      String
   subjectId String
-  subject   Subject    @relation(fields: [subjectId], references: [id])
+  subject   Subject    @relation(fields: [subjectId], references: [id], onDelete: Cascade)
   questions Question[]
 
   @@unique([subjectId, name])
@@ -88,12 +93,13 @@ model Question {
   id            String    @id @default(cuid())
   externalId    Int?
   subjectId     String
-  subject       Subject   @relation(fields: [subjectId], references: [id])
+  subject       Subject   @relation(fields: [subjectId], references: [id], onDelete: Cascade)
   topicId       String
-  topic         Topic     @relation(fields: [topicId], references: [id])
+  topic         Topic     @relation(fields: [topicId], references: [id], onDelete: Cascade)
   question      String
   options       String
   correctAnswer String
+  createdAt     DateTime  @default(now())
   attempts      Attempt[]
   mistakes      Mistake[]
 }

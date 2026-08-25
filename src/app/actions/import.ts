@@ -1,6 +1,8 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
+import { getSession } from "@/app/actions/auth";
+import { revalidatePath } from "next/cache";
 
 export async function importQuestions(data: {
   questions: Array<{
@@ -14,17 +16,24 @@ export async function importQuestions(data: {
   defaultSubject: string;
   defaultTopic: string;
 }) {
+  const user = await getSession();
+  if (!user) return { error: "Not authenticated" };
+
   let importedCount = 0;
 
   for (const q of data.questions) {
-    const subjectName = q.subject || data.defaultSubject;
-    const topicName = q.topic || data.defaultTopic;
+    const subjectName = (q.subject || data.defaultSubject).trim();
+    const topicName = (q.topic || data.defaultTopic).trim();
 
     if (!subjectName || !topicName) continue;
 
-    let subject = await prisma.subject.findUnique({ where: { name: subjectName } });
+    let subject = await prisma.subject.findFirst({
+      where: { userId: user.id, name: subjectName },
+    });
     if (!subject) {
-      subject = await prisma.subject.create({ data: { name: subjectName } });
+      subject = await prisma.subject.create({
+        data: { name: subjectName, userId: user.id },
+      });
     }
 
     let topic = await prisma.topic.findUnique({
@@ -36,19 +45,31 @@ export async function importQuestions(data: {
       });
     }
 
-    await prisma.question.create({
-      data: {
-        externalId: q.id || null,
+    const existing = await prisma.question.findFirst({
+      where: {
         subjectId: subject.id,
         topicId: topic.id,
-        question: q.question,
-        options: JSON.stringify(q.options),
-        correctAnswer: q.answer,
+        question: q.question.trim(),
       },
     });
 
-    importedCount++;
+    if (!existing) {
+      await prisma.question.create({
+        data: {
+          externalId: q.id || null,
+          subjectId: subject.id,
+          topicId: topic.id,
+          question: q.question.trim(),
+          options: JSON.stringify(q.options),
+          correctAnswer: q.answer.trim(),
+        },
+      });
+      importedCount++;
+    }
   }
 
+  revalidatePath("/questions");
+  revalidatePath("/subjects");
+  revalidatePath("/session/new");
   return { success: true, count: importedCount };
 }

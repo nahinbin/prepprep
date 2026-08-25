@@ -12,6 +12,7 @@ import {
   LogOut,
   Gift,
   History,
+  Database,
 } from "lucide-react";
 import { logout } from "@/app/actions/auth";
 import { Suspense } from "react";
@@ -21,6 +22,7 @@ const ShellCtx = createContext<{ mistakeCount: number }>({ mistakeCount: 0 });
 
 const links = [
   { href: "/", label: "Home", icon: Home, match: (p: string) => p === "/" },
+  { href: "/questions", label: "Question Bank", icon: Database, match: (p: string) => p === "/questions" },
   { href: "/history", label: "History", icon: History, match: (p: string) => p === "/history" },
   { href: "/rewards", label: "Store", icon: Gift, match: (p: string) => p === "/rewards" },
   { href: "/subjects", label: "Subjects", icon: Layers, match: (p: string) => p === "/subjects" },

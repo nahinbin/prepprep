@@ -15,19 +15,22 @@ import {
   Plus,
   Check,
   FileJson,
+  Database,
+  Layers,
 } from "lucide-react";
 import { NavMenu, AppShell } from "@/components/NavMenu";
 import { BackButton } from "@/components/BackButton";
 import { GameHUD } from "@/components/GameHUD";
 import { sessionCostForCount, type EconomySettings } from "@/lib/constants";
-import { startImportedSessionCoins } from "@/app/actions/economy";
+import { startImportedSessionCoins, startSessionCoins } from "@/app/actions/economy";
 
 const PROGRESS_KEY = "mcq_session_progress";
 
 type Subject = {
   id: string;
   name: string;
-  topics: Array<{ id: string; name: string }>;
+  topics: Array<{ id: string; name: string; _count?: { questions: number } }>;
+  _count?: { questions: number };
 };
 
 function NewSessionFormInner({
@@ -42,6 +45,19 @@ function NewSessionFormInner({
   const searchParams = useSearchParams();
   const isPractice = searchParams.get("mode") === "practice";
 
+  // Practice source: "bank" (from saved Question Bank) or "import" (paste/upload JSON)
+  const [practiceSource, setPracticeSource] = useState<"bank" | "import">(
+    isPractice && initialSubjects.some((s) => (s._count?.questions ?? 0) > 0) ? "bank" : "import"
+  );
+
+  // Bank Mode state
+  const [bankSubjectId, setBankSubjectId] = useState<string>(
+    initialSubjects[0]?.id || ""
+  );
+  const [bankTopicId, setBankTopicId] = useState<string>("all");
+  const [bankCount, setBankCount] = useState<number>(10);
+
+  // Import Mode state
   const [step, setStep] = useState(1);
   const [subjects, setSubjects] = useState(initialSubjects);
   const [subjectName, setSubjectName] = useState("");
@@ -57,6 +73,7 @@ function NewSessionFormInner({
   const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set());
   const [showRandomModal, setShowRandomModal] = useState(false);
   const [randomCount, setRandomCount] = useState(10);
+  const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -69,6 +86,19 @@ function NewSessionFormInner({
     [subjects, subjectName]
   );
   const topicsList = activeSubject ? activeSubject.topics : [];
+
+  // Bank mode helper counts
+  const selectedBankSubject = useMemo(
+    () => subjects.find((s) => s.id === bankSubjectId),
+    [subjects, bankSubjectId]
+  );
+  const bankTopics = selectedBankSubject ? selectedBankSubject.topics : [];
+  const bankAvailableQuestions = useMemo(() => {
+    if (!selectedBankSubject) return 0;
+    if (bankTopicId === "all") return selectedBankSubject._count?.questions ?? 0;
+    const top = bankTopics.find((t) => t.id === bankTopicId);
+    return top?._count?.questions ?? 0;
+  }, [selectedBankSubject, bankTopicId, bankTopics]);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -85,6 +115,7 @@ function NewSessionFormInner({
 
   const validateJson = (text: string) => {
     setError("");
+    setDuplicateWarning(null);
     setParsedQuestions([]);
     setSelectedIndices(new Set());
     if (!text.trim()) return;
@@ -103,8 +134,28 @@ function NewSessionFormInner({
         }
       });
 
-      setParsedQuestions(parsed.questions);
-      setSelectedIndices(new Set(parsed.questions.map((_: unknown, i: number) => i)));
+      // Check for duplicate questions in the session
+      const uniqueMap = new Map<string, any>();
+      let duplicateCount = 0;
+
+      for (const q of parsed.questions) {
+        const normalized = q.question.trim().toLowerCase();
+        if (uniqueMap.has(normalized)) {
+          duplicateCount++;
+        } else {
+          uniqueMap.set(normalized, q);
+        }
+      }
+
+      const deduplicated = Array.from(uniqueMap.values());
+      if (duplicateCount > 0) {
+        setDuplicateWarning(
+          `Removed ${duplicateCount} duplicate question(s) from the import to ensure uniqueness.`
+        );
+      }
+
+      setParsedQuestions(deduplicated);
+      setSelectedIndices(new Set(deduplicated.map((_: unknown, i: number) => i)));
     } catch (err: any) {
       setError(err.message || "Invalid JSON format.");
     }
@@ -181,7 +232,7 @@ function NewSessionFormInner({
     setStep(2);
   };
 
-  const handleStart = async () => {
+  const handleStartImported = async () => {
     if (count === 0) {
       setError("Please select at least one question.");
       return;
@@ -221,10 +272,50 @@ function NewSessionFormInner({
     router.push("/session/play");
   };
 
+  const handleStartFromBank = async () => {
+    if (!bankSubjectId) {
+      setError("Please select a subject.");
+      return;
+    }
+    if (bankAvailableQuestions === 0) {
+      setError("No questions available in this subject/topic. Please import or save some questions first.");
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+
+    const res = await startSessionCoins({
+      subjectId: bankSubjectId,
+      topicId: bankTopicId,
+      count: Math.min(bankCount, bankAvailableQuestions),
+      cost: 0,
+      isPractice: true,
+    });
+
+    if (res.error) {
+      setError(res.error);
+      setLoading(false);
+      return;
+    }
+
+    sessionStorage.removeItem(PROGRESS_KEY);
+    sessionStorage.setItem(
+      "current_mcq_session",
+      JSON.stringify({
+        questions: res.questions,
+        isPractice: true,
+        settings: res.settings,
+      })
+    );
+    router.push("/session/play");
+  };
+
   return (
     <AppShell>
       <div className="min-h-screen p-4 md:p-8 flex items-start justify-center py-8 md:py-12">
         <Card className="w-full max-w-3xl p-5 md:p-8">
+          {/* Header */}
           <div className="flex items-center justify-between mb-6 gap-3">
             <div className="flex items-center gap-2 min-w-0">
               <BackButton />
@@ -247,90 +338,73 @@ function NewSessionFormInner({
             </div>
           </div>
 
-          <div className="flex items-center gap-2 mb-6">
-            <button
-              type="button"
-              onClick={() => setStep(1)}
-              className={`flex items-center justify-center w-9 h-9 rounded-full text-sm font-bold transition-colors ${
-                step === 1 ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-muted/80"
-              }`}
-            >
-              1
-            </button>
-            <div className="h-px flex-1 bg-border" />
-            <div
-              className={`flex items-center justify-center w-9 h-9 rounded-full text-sm font-bold ${
-                step === 2 ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
-              }`}
-            >
-              2
+          {/* Mode Switcher for Free Practice */}
+          {isPractice && (
+            <div className="flex rounded-2xl bg-muted/60 p-1 mb-6 border border-border">
+              <button
+                type="button"
+                onClick={() => {
+                  setPracticeSource("bank");
+                  setError("");
+                }}
+                className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-bold text-sm transition-all ${
+                  practiceSource === "bank"
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <Database className="w-4 h-4 text-primary" />
+                Solve from Question Bank
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setPracticeSource("import");
+                  setError("");
+                }}
+                className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-bold text-sm transition-all ${
+                  practiceSource === "import"
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <Upload className="w-4 h-4 text-primary" />
+                Import Questions (JSON)
+              </button>
             </div>
-          </div>
+          )}
 
-          {step === 1 && (
+          {/* Practice from Question Bank Section */}
+          {isPractice && practiceSource === "bank" ? (
             <div className="space-y-6">
               <div>
-                <div className="flex items-center justify-between mb-3">
-                  <label className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
-                    Subject
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setAddingSubject(true);
-                      setAddingTopic(false);
-                    }}
-                    className="text-sm font-semibold text-primary flex items-center gap-1 hover:underline"
-                  >
-                    <Plus className="w-4 h-4" /> Add new
-                  </button>
-                </div>
-
-                {addingSubject ? (
-                  <div className="flex gap-2">
-                    <Input
-                      autoFocus
-                      placeholder="New subject name"
-                      value={newSubjectInput}
-                      onChange={(e) => setNewSubjectInput(e.target.value)}
-                      onKeyDown={(e) => e.key === "Enter" && commitNewSubject()}
-                      className="h-12 rounded-xl text-base"
-                    />
-                    <Button onClick={commitNewSubject} className="rounded-xl h-12 px-4 shrink-0">
-                      <Check className="w-5 h-5" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      onClick={() => setAddingSubject(false)}
-                      className="rounded-xl h-12 px-3 shrink-0"
-                    >
-                      Cancel
-                    </Button>
-                  </div>
+                <label className="text-sm font-semibold text-muted-foreground uppercase tracking-wider block mb-3">
+                  Select Subject
+                </label>
+                {subjects.length === 0 ? (
+                  <p className="text-sm text-muted-foreground py-3">
+                    No subjects with saved questions found. Switch to "Import Questions" to practice!
+                  </p>
                 ) : (
-                  <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-thin">
-                    {subjects.length === 0 && (
-                      <p className="text-sm text-muted-foreground py-3">
-                        No subjects yet — add one to continue.
-                      </p>
-                    )}
+                  <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 flex-wrap">
                     {subjects.map((s) => {
-                      const selected = subjectName.toLowerCase() === s.name.toLowerCase();
+                      const selected = bankSubjectId === s.id;
+                      const qCount = s._count?.questions ?? 0;
                       return (
                         <button
                           key={s.id}
                           type="button"
                           onClick={() => {
-                            setSubjectName(s.name);
-                            setTopicName("");
+                            setBankSubjectId(s.id);
+                            setBankTopicId("all");
                           }}
                           className={`shrink-0 px-4 py-2.5 rounded-xl text-base font-semibold border transition-all ${
                             selected
-                              ? "bg-primary text-primary-foreground border-primary"
+                              ? "bg-primary text-primary-foreground border-primary shadow-sm"
                               : "bg-muted/40 border-border hover:border-primary/40"
                           }`}
                         >
-                          {s.name}
+                          {s.name} ({qCount})
                         </button>
                       );
                     })}
@@ -338,241 +412,68 @@ function NewSessionFormInner({
                 )}
               </div>
 
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <label className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
-                    Topic
+              {selectedBankSubject && bankTopics.length > 0 && (
+                <div>
+                  <label className="text-sm font-semibold text-muted-foreground uppercase tracking-wider block mb-3">
+                    Select Topic
                   </label>
-                  {subjectName && (
+                  <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 flex-wrap">
                     <button
                       type="button"
-                      onClick={() => {
-                        setAddingTopic(true);
-                        setAddingSubject(false);
-                      }}
-                      className="text-sm font-semibold text-primary flex items-center gap-1 hover:underline"
+                      onClick={() => setBankTopicId("all")}
+                      className={`shrink-0 px-4 py-2 rounded-xl text-sm font-semibold border transition-all ${
+                        bankTopicId === "all"
+                          ? "bg-primary text-primary-foreground border-primary"
+                          : "bg-muted/40 border-border hover:border-primary/40"
+                      }`}
                     >
-                      <Plus className="w-4 h-4" /> Add new
+                      All Topics ({selectedBankSubject._count?.questions ?? 0})
                     </button>
-                  )}
-                </div>
-
-                {!subjectName ? (
-                  <p className="text-sm text-muted-foreground py-2">Select a subject first.</p>
-                ) : addingTopic ? (
-                  <div className="flex gap-2">
-                    <Input
-                      autoFocus
-                      placeholder="New topic name"
-                      value={newTopicInput}
-                      onChange={(e) => setNewTopicInput(e.target.value)}
-                      onKeyDown={(e) => e.key === "Enter" && commitNewTopic()}
-                      className="h-12 rounded-xl text-base"
-                    />
-                    <Button onClick={commitNewTopic} className="rounded-xl h-12 px-4 shrink-0">
-                      <Check className="w-5 h-5" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      onClick={() => setAddingTopic(false)}
-                      className="rounded-xl h-12 px-3 shrink-0"
-                    >
-                      Cancel
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 max-h-40 flex-wrap">
-                    {topicsList.length === 0 && (
-                      <p className="text-sm text-muted-foreground py-2">
-                        No topics yet — add one to continue.
-                      </p>
-                    )}
-                    {topicsList.map((t) => {
-                      const selected = topicName.toLowerCase() === t.name.toLowerCase();
+                    {bankTopics.map((t) => {
+                      const selected = bankTopicId === t.id;
                       return (
                         <button
                           key={t.id}
                           type="button"
-                          onClick={() => setTopicName(t.name)}
-                          className={`shrink-0 px-4 py-2.5 rounded-xl text-base font-semibold border transition-all ${
+                          onClick={() => setBankTopicId(t.id)}
+                          className={`shrink-0 px-4 py-2 rounded-xl text-sm font-semibold border transition-all ${
                             selected
                               ? "bg-primary text-primary-foreground border-primary"
                               : "bg-muted/40 border-border hover:border-primary/40"
                           }`}
                         >
-                          {t.name}
+                          {t.name} ({t._count?.questions ?? 0})
                         </button>
                       );
                     })}
                   </div>
-                )}
-              </div>
-
-              {error && (
-                <p className="text-danger text-sm font-medium text-center bg-danger/10 p-3 rounded-xl">
-                  {error}
-                </p>
+                </div>
               )}
 
-              <div className="pt-2 flex justify-end">
-                <Button
-                  size="lg"
-                  onClick={handleStep1Next}
-                  disabled={!subjectName.trim() || !topicName.trim()}
-                  className="w-full md:w-auto px-8 h-12 text-base rounded-xl"
-                >
-                  Next
-                  <ChevronRight className="w-5 h-5 ml-1" />
-                </Button>
-              </div>
-            </div>
-          )}
-
-          {step === 2 && (
-            <div className="space-y-5">
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setInputMode("paste")}
-                  className={`flex-1 flex items-center justify-center gap-2 py-3.5 rounded-2xl border text-base font-bold transition-all ${
-                    inputMode === "paste"
-                      ? "border-primary bg-primary/10 text-primary"
-                      : "border-border hover:border-primary/40"
-                  }`}
-                >
-                  <FileJson className="w-5 h-5" />
-                  Paste
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setInputMode("upload")}
-                  className={`flex-1 flex items-center justify-center gap-2 py-3.5 rounded-2xl border text-base font-bold transition-all ${
-                    inputMode === "upload"
-                      ? "border-primary bg-primary/10 text-primary"
-                      : "border-border hover:border-primary/40"
-                  }`}
-                >
-                  <Upload className="w-5 h-5" />
-                  Upload
-                </button>
-              </div>
-
-              {inputMode === "upload" ? (
-                <div className="border border-dashed border-border hover:border-primary/50 transition-colors rounded-xl p-4 text-center bg-muted/20">
-                  <input
-                    type="file"
-                    id="file-upload"
-                    className="hidden"
-                    accept=".json"
-                    onChange={handleFileUpload}
-                  />
-                  <label
-                    htmlFor="file-upload"
-                    className="cursor-pointer inline-flex items-center gap-2 font-semibold text-primary"
-                  >
-                    <Upload className="w-5 h-5" />
-                    Choose JSON file
+              {bankAvailableQuestions > 0 && (
+                <div>
+                  <label className="text-sm font-semibold text-muted-foreground uppercase tracking-wider block mb-3">
+                    Number of Questions to Solve
                   </label>
-                  {jsonText && parsedQuestions.length > 0 && (
-                    <p className="text-xs text-success mt-2">
-                      {parsedQuestions.length} questions loaded
-                    </p>
-                  )}
-                </div>
-              ) : (
-                <textarea
-                  className="w-full h-28 rounded-xl border border-border bg-background/50 p-3 font-mono text-sm shadow-inner focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary placeholder:text-muted-foreground"
-                  placeholder='{"questions":[{"question":"...","options":{"A":"..."},"answer":"A"}]}'
-                  value={jsonText}
-                  onChange={(e) => {
-                    setJsonText(e.target.value);
-                    validateJson(e.target.value);
-                  }}
-                />
-              )}
-
-              {parsedQuestions.length > 0 && (
-                <div className="border border-border rounded-xl bg-background/50 p-3">
-                  <div className="flex flex-wrap items-center justify-between gap-2 mb-3 border-b border-border pb-3">
-                    <span className="font-semibold text-sm">
-                      {selectedIndices.size}/{parsedQuestions.length} selected
-                    </span>
-                    <div className="flex flex-wrap gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={selectAll}
-                        className="rounded-xl h-9"
-                      >
-                        Select All
-                      </Button>
-                      {selectedIndices.size > 0 && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={selectNone}
-                          className="rounded-xl h-9"
+                  <div className="flex gap-2 mb-3">
+                    {[5, 10, 20, 50, bankAvailableQuestions]
+                      .filter((n, idx, arr) => n <= bankAvailableQuestions && arr.indexOf(n) === idx)
+                      .map((n) => (
+                        <button
+                          key={n}
+                          type="button"
+                          onClick={() => setBankCount(n)}
+                          className={`flex-1 py-2.5 rounded-xl text-sm font-bold border ${
+                            bankCount === n
+                              ? "border-primary bg-primary/15 text-primary"
+                              : "border-border bg-background/50"
+                          }`}
                         >
-                          Select None
-                        </Button>
-                      )}
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setRandomCount(Math.min(10, parsedQuestions.length));
-                          setShowRandomModal(true);
-                        }}
-                        className="rounded-xl h-9"
-                      >
-                        <Shuffle className="w-3.5 h-3.5 mr-1" />
-                        Random
-                      </Button>
-                    </div>
-                  </div>
-                  <div className="max-h-52 overflow-y-auto space-y-1.5">
-                    {parsedQuestions.map((q, i) => (
-                      <label
-                        key={i}
-                        className="flex items-start p-2.5 rounded-xl hover:bg-muted cursor-pointer"
-                      >
-                        <input
-                          type="checkbox"
-                          className="mt-1 mr-3 w-4 h-4 text-primary"
-                          checked={selectedIndices.has(i)}
-                          onChange={() => toggleSelection(i)}
-                        />
-                        <p className="font-medium text-sm leading-snug">{q.question}</p>
-                      </label>
-                    ))}
+                          {n === bankAvailableQuestions ? `All (${n})` : n}
+                        </button>
+                      ))}
                   </div>
                 </div>
-              )}
-
-              {count > 0 && !isPractice && (
-                <div className="bg-muted/20 border border-border rounded-xl p-4 space-y-2">
-                  <div className="flex justify-between text-base">
-                    <span className="text-muted-foreground">Selected</span>
-                    <span className="font-bold">{count}</span>
-                  </div>
-                  <div className="flex justify-between text-base">
-                    <span className="text-muted-foreground">Cost</span>
-                    <span className="font-bold flex items-center text-danger">
-                      <Coins className="w-4 h-4 mr-1" /> -{cost}
-                    </span>
-                  </div>
-                  {!canAfford && (
-                    <p className="text-danger text-sm text-center font-medium pt-1">
-                      Not enough coins.
-                    </p>
-                  )}
-                </div>
-              )}
-
-              {count > 0 && isPractice && (
-                <p className="text-center text-sm text-muted-foreground">
-                  {count} question{count !== 1 ? "s" : ""} · free practice
-                </p>
               )}
 
               {error && (
@@ -583,23 +484,379 @@ function NewSessionFormInner({
 
               <Button
                 size="lg"
-                onClick={handleStart}
-                disabled={count === 0 || !canAfford || loading}
+                onClick={handleStartFromBank}
+                disabled={bankAvailableQuestions === 0 || loading}
                 isLoading={loading}
-                className="w-full h-12 text-base rounded-xl"
+                className="w-full h-13 text-base font-bold rounded-2xl shadow-lg shadow-primary/20"
               >
-                {isPractice ? (
-                  <>
-                    Start Practice
-                    <Sparkles className="w-5 h-5 ml-2" />
-                  </>
-                ) : (
-                  <>
-                    Pay & Start
-                    <Play className="w-5 h-5 ml-2" />
-                  </>
-                )}
+                <Play className="w-5 h-5 mr-2 fill-current" />
+                Start Free Practice ({Math.min(bankCount, bankAvailableQuestions)} Questions)
               </Button>
+            </div>
+          ) : (
+            /* Import Workflow */
+            <div>
+              <div className="flex items-center gap-2 mb-6">
+                <button
+                  type="button"
+                  onClick={() => setStep(1)}
+                  className={`flex items-center justify-center w-9 h-9 rounded-full text-sm font-bold transition-colors ${
+                    step === 1 ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-muted/80"
+                  }`}
+                >
+                  1
+                </button>
+                <div className="h-px flex-1 bg-border" />
+                <div
+                  className={`flex items-center justify-center w-9 h-9 rounded-full text-sm font-bold ${
+                    step === 2 ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+                  }`}
+                >
+                  2
+                </div>
+              </div>
+
+              {step === 1 && (
+                <div className="space-y-6">
+                  <div>
+                    <div className="flex items-center justify-between mb-3">
+                      <label className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+                        Subject
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAddingSubject(true);
+                          setAddingTopic(false);
+                        }}
+                        className="text-sm font-semibold text-primary flex items-center gap-1 hover:underline"
+                      >
+                        <Plus className="w-4 h-4" /> Add new
+                      </button>
+                    </div>
+
+                    {addingSubject ? (
+                      <div className="flex gap-2">
+                        <Input
+                          autoFocus
+                          placeholder="New subject name"
+                          value={newSubjectInput}
+                          onChange={(e) => setNewSubjectInput(e.target.value)}
+                          onKeyDown={(e) => e.key === "Enter" && commitNewSubject()}
+                          className="h-12 rounded-xl text-base"
+                        />
+                        <Button onClick={commitNewSubject} className="rounded-xl h-12 px-4 shrink-0">
+                          <Check className="w-5 h-5" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          onClick={() => setAddingSubject(false)}
+                          className="rounded-xl h-12 px-3 shrink-0"
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 flex-wrap">
+                        {subjects.length === 0 && (
+                          <p className="text-sm text-muted-foreground py-3">
+                            No subjects yet — add one to continue.
+                          </p>
+                        )}
+                        {subjects.map((s) => {
+                          const selected = subjectName.toLowerCase() === s.name.toLowerCase();
+                          return (
+                            <button
+                              key={s.id}
+                              type="button"
+                              onClick={() => {
+                                setSubjectName(s.name);
+                                setTopicName("");
+                              }}
+                              className={`shrink-0 px-4 py-2.5 rounded-xl text-base font-semibold border transition-all ${
+                                selected
+                                  ? "bg-primary text-primary-foreground border-primary shadow-sm"
+                                  : "bg-muted/40 border-border hover:border-primary/40"
+                              }`}
+                            >
+                              {s.name}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-3">
+                      <label className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+                        Topic
+                      </label>
+                      {subjectName && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setAddingTopic(true);
+                            setAddingSubject(false);
+                          }}
+                          className="text-sm font-semibold text-primary flex items-center gap-1 hover:underline"
+                        >
+                          <Plus className="w-4 h-4" /> Add new
+                        </button>
+                      )}
+                    </div>
+
+                    {!subjectName ? (
+                      <p className="text-sm text-muted-foreground py-2">Select a subject first.</p>
+                    ) : addingTopic ? (
+                      <div className="flex gap-2">
+                        <Input
+                          autoFocus
+                          placeholder="New topic name"
+                          value={newTopicInput}
+                          onChange={(e) => setNewTopicInput(e.target.value)}
+                          onKeyDown={(e) => e.key === "Enter" && commitNewTopic()}
+                          className="h-12 rounded-xl text-base"
+                        />
+                        <Button onClick={commitNewTopic} className="rounded-xl h-12 px-4 shrink-0">
+                          <Check className="w-5 h-5" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          onClick={() => setAddingTopic(false)}
+                          className="rounded-xl h-12 px-3 shrink-0"
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 max-h-40 flex-wrap">
+                        {topicsList.length === 0 && (
+                          <p className="text-sm text-muted-foreground py-2">
+                            No topics yet — add one to continue.
+                          </p>
+                        )}
+                        {topicsList.map((t) => {
+                          const selected = topicName.toLowerCase() === t.name.toLowerCase();
+                          return (
+                            <button
+                              key={t.id}
+                              type="button"
+                              onClick={() => setTopicName(t.name)}
+                              className={`shrink-0 px-4 py-2.5 rounded-xl text-base font-semibold border transition-all ${
+                                selected
+                                  ? "bg-primary text-primary-foreground border-primary shadow-sm"
+                                  : "bg-muted/40 border-border hover:border-primary/40"
+                              }`}
+                            >
+                              {t.name}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {error && (
+                    <p className="text-danger text-sm font-medium text-center bg-danger/10 p-3 rounded-xl">
+                      {error}
+                    </p>
+                  )}
+
+                  <div className="pt-2 flex justify-end">
+                    <Button
+                      size="lg"
+                      onClick={handleStep1Next}
+                      disabled={!subjectName.trim() || !topicName.trim()}
+                      className="w-full md:w-auto px-8 h-12 text-base rounded-xl font-bold"
+                    >
+                      Next
+                      <ChevronRight className="w-5 h-5 ml-1" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {step === 2 && (
+                <div className="space-y-5">
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setInputMode("paste")}
+                      className={`flex-1 flex items-center justify-center gap-2 py-3.5 rounded-2xl border text-base font-bold transition-all ${
+                        inputMode === "paste"
+                          ? "border-primary bg-primary/10 text-primary"
+                          : "border-border hover:border-primary/40"
+                      }`}
+                    >
+                      <FileJson className="w-5 h-5" />
+                      Paste
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setInputMode("upload")}
+                      className={`flex-1 flex items-center justify-center gap-2 py-3.5 rounded-2xl border text-base font-bold transition-all ${
+                        inputMode === "upload"
+                          ? "border-primary bg-primary/10 text-primary"
+                          : "border-border hover:border-primary/40"
+                      }`}
+                    >
+                      <Upload className="w-5 h-5" />
+                      Upload
+                    </button>
+                  </div>
+
+                  {inputMode === "upload" ? (
+                    <div className="border border-dashed border-border hover:border-primary/50 transition-colors rounded-xl p-4 text-center bg-muted/20">
+                      <input
+                        type="file"
+                        id="file-upload"
+                        className="hidden"
+                        accept=".json"
+                        onChange={handleFileUpload}
+                      />
+                      <label
+                        htmlFor="file-upload"
+                        className="cursor-pointer inline-flex items-center gap-2 font-semibold text-primary"
+                      >
+                        <Upload className="w-5 h-5" />
+                        Choose JSON file
+                      </label>
+                      {jsonText && parsedQuestions.length > 0 && (
+                        <p className="text-xs text-success mt-2">
+                          {parsedQuestions.length} unique questions loaded
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <textarea
+                      className="w-full h-28 rounded-xl border border-border bg-background/50 p-3 font-mono text-sm shadow-inner focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary placeholder:text-muted-foreground"
+                      placeholder='{"questions":[{"question":"...","options":{"A":"..."},"answer":"A"}]}'
+                      value={jsonText}
+                      onChange={(e) => {
+                        setJsonText(e.target.value);
+                        validateJson(e.target.value);
+                      }}
+                    />
+                  )}
+
+                  {duplicateWarning && (
+                    <div className="p-3 bg-amber-500/10 text-amber-500 border border-amber-500/20 rounded-xl text-xs font-semibold">
+                      {duplicateWarning}
+                    </div>
+                  )}
+
+                  {parsedQuestions.length > 0 && (
+                    <div className="border border-border rounded-xl bg-background/50 p-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2 mb-3 border-b border-border pb-3">
+                        <span className="font-semibold text-sm">
+                          {selectedIndices.size}/{parsedQuestions.length} selected
+                        </span>
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={selectAll}
+                            className="rounded-xl h-9"
+                          >
+                            Select All
+                          </Button>
+                          {selectedIndices.size > 0 && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={selectNone}
+                              className="rounded-xl h-9"
+                            >
+                              Select None
+                            </Button>
+                          )}
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setRandomCount(Math.min(10, parsedQuestions.length));
+                              setShowRandomModal(true);
+                            }}
+                            className="rounded-xl h-9"
+                          >
+                            <Shuffle className="w-3.5 h-3.5 mr-1" />
+                            Random
+                          </Button>
+                        </div>
+                      </div>
+                      <div className="max-h-52 overflow-y-auto space-y-1.5">
+                        {parsedQuestions.map((q, i) => (
+                          <label
+                            key={i}
+                            className="flex items-start p-2.5 rounded-xl hover:bg-muted cursor-pointer"
+                          >
+                            <input
+                              type="checkbox"
+                              className="mt-1 mr-3 w-4 h-4 text-primary"
+                              checked={selectedIndices.has(i)}
+                              onChange={() => toggleSelection(i)}
+                            />
+                            <p className="font-medium text-sm leading-snug">{q.question}</p>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {count > 0 && !isPractice && (
+                    <div className="bg-muted/20 border border-border rounded-xl p-4 space-y-2">
+                      <div className="flex justify-between text-base">
+                        <span className="text-muted-foreground">Selected</span>
+                        <span className="font-bold">{count}</span>
+                      </div>
+                      <div className="flex justify-between text-base">
+                        <span className="text-muted-foreground">Cost</span>
+                        <span className="font-bold flex items-center text-danger">
+                          <Coins className="w-4 h-4 mr-1" /> -{cost}
+                        </span>
+                      </div>
+                      {!canAfford && (
+                        <p className="text-danger text-sm text-center font-medium pt-1">
+                          Not enough coins.
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {count > 0 && isPractice && (
+                    <p className="text-center text-sm text-muted-foreground">
+                      {count} question{count !== 1 ? "s" : ""} · free practice
+                    </p>
+                  )}
+
+                  {error && (
+                    <p className="text-danger text-sm font-medium text-center bg-danger/10 p-3 rounded-xl">
+                      {error}
+                    </p>
+                  )}
+
+                  <Button
+                    size="lg"
+                    onClick={handleStartImported}
+                    disabled={count === 0 || !canAfford || loading}
+                    isLoading={loading}
+                    className="w-full h-12 text-base rounded-xl font-bold"
+                  >
+                    {isPractice ? (
+                      <>
+                        Start Practice
+                        <Sparkles className="w-5 h-5 ml-2" />
+                      </>
+                    ) : (
+                      <>
+                        Pay & Start
+                        <Play className="w-5 h-5 ml-2" />
+                      </>
+                    )}
+                  </Button>
+                </div>
+              )}
             </div>
           )}
         </Card>

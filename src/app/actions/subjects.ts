@@ -11,9 +11,10 @@ async function requireAuth() {
 }
 
 export async function getSubjectsWithStats() {
-  await requireAuth();
+  const user = await requireAuth();
 
   const subjects = await prisma.subject.findMany({
+    where: { userId: user.id },
     include: {
       topics: {
         include: {
@@ -30,31 +31,41 @@ export async function getSubjectsWithStats() {
 }
 
 export async function createSubject(name: string) {
-  await requireAuth();
+  const user = await requireAuth();
   const trimmed = name.trim();
   if (!trimmed) return { error: "Subject name is required." };
 
-  const caseInsensitiveMatch = await prisma.subject.findMany();
-  if (caseInsensitiveMatch.some((s) => s.name.toLowerCase() === trimmed.toLowerCase())) {
-    return { error: "A subject with this name already exists." };
+  const userSubjects = await prisma.subject.findMany({
+    where: { userId: user.id },
+  });
+  if (userSubjects.some((s) => s.name.toLowerCase() === trimmed.toLowerCase())) {
+    return { error: "A subject with this name already exists in your account." };
   }
 
-  const subject = await prisma.subject.create({ data: { name: trimmed } });
+  const subject = await prisma.subject.create({
+    data: { name: trimmed, userId: user.id },
+  });
   revalidatePath("/subjects");
   revalidatePath("/session/new");
+  revalidatePath("/questions");
   revalidatePath("/mistakes");
   return { success: true, subject };
 }
 
 export async function updateSubject(id: string, name: string) {
-  await requireAuth();
+  const user = await requireAuth();
   const trimmed = name.trim();
   if (!trimmed) return { error: "Subject name is required." };
 
-  const duplicate = await prisma.subject.findFirst({
-    where: { name: trimmed, NOT: { id } },
+  const existingSubject = await prisma.subject.findFirst({
+    where: { id, userId: user.id },
   });
-  if (duplicate) return { error: "A subject with this name already exists." };
+  if (!existingSubject) return { error: "Subject not found." };
+
+  const duplicate = await prisma.subject.findFirst({
+    where: { userId: user.id, name: trimmed, NOT: { id } },
+  });
+  if (duplicate) return { error: "A subject with this name already exists in your account." };
 
   const subject = await prisma.subject.update({
     where: { id },
@@ -62,12 +73,18 @@ export async function updateSubject(id: string, name: string) {
   });
   revalidatePath("/subjects");
   revalidatePath("/session/new");
+  revalidatePath("/questions");
   revalidatePath("/mistakes");
   return { success: true, subject };
 }
 
 export async function deleteSubject(id: string) {
-  await requireAuth();
+  const user = await requireAuth();
+
+  const subject = await prisma.subject.findFirst({
+    where: { id, userId: user.id },
+  });
+  if (!subject) return { error: "Subject not found." };
 
   const questionCount = await prisma.question.count({ where: { subjectId: id } });
   if (questionCount > 0) {
@@ -78,14 +95,20 @@ export async function deleteSubject(id: string) {
   await prisma.subject.delete({ where: { id } });
   revalidatePath("/subjects");
   revalidatePath("/session/new");
+  revalidatePath("/questions");
   revalidatePath("/mistakes");
   return { success: true };
 }
 
 export async function createTopic(subjectId: string, name: string) {
-  await requireAuth();
+  const user = await requireAuth();
   const trimmed = name.trim();
   if (!trimmed) return { error: "Topic name is required." };
+
+  const subject = await prisma.subject.findFirst({
+    where: { id: subjectId, userId: user.id },
+  });
+  if (!subject) return { error: "Subject not found." };
 
   const existing = await prisma.topic.findUnique({
     where: { subjectId_name: { subjectId, name: trimmed } },
@@ -97,17 +120,21 @@ export async function createTopic(subjectId: string, name: string) {
   });
   revalidatePath("/subjects");
   revalidatePath("/session/new");
+  revalidatePath("/questions");
   revalidatePath("/mistakes");
   return { success: true, topic };
 }
 
 export async function updateTopic(id: string, name: string) {
-  await requireAuth();
+  const user = await requireAuth();
   const trimmed = name.trim();
   if (!trimmed) return { error: "Topic name is required." };
 
-  const topic = await prisma.topic.findUnique({ where: { id } });
-  if (!topic) return { error: "Topic not found." };
+  const topic = await prisma.topic.findUnique({
+    where: { id },
+    include: { subject: true },
+  });
+  if (!topic || topic.subject.userId !== user.id) return { error: "Topic not found." };
 
   const duplicate = await prisma.topic.findFirst({
     where: { subjectId: topic.subjectId, name: trimmed, NOT: { id } },
@@ -120,12 +147,19 @@ export async function updateTopic(id: string, name: string) {
   });
   revalidatePath("/subjects");
   revalidatePath("/session/new");
+  revalidatePath("/questions");
   revalidatePath("/mistakes");
   return { success: true, topic: updated };
 }
 
 export async function deleteTopic(id: string) {
-  await requireAuth();
+  const user = await requireAuth();
+
+  const topic = await prisma.topic.findUnique({
+    where: { id },
+    include: { subject: true },
+  });
+  if (!topic || topic.subject.userId !== user.id) return { error: "Topic not found." };
 
   const questionCount = await prisma.question.count({ where: { topicId: id } });
   if (questionCount > 0) {
@@ -135,6 +169,7 @@ export async function deleteTopic(id: string) {
   await prisma.topic.delete({ where: { id } });
   revalidatePath("/subjects");
   revalidatePath("/session/new");
+  revalidatePath("/questions");
   revalidatePath("/mistakes");
   return { success: true };
 }
@@ -149,7 +184,7 @@ export async function getMistakeStatsBySubject() {
         select: {
           subjectId: true,
           topicId: true,
-          subject: { select: { id: true, name: true } },
+          subject: { select: { id: true, name: true, userId: true } },
           topic: { select: { id: true, name: true } },
         },
       },

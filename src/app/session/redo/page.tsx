@@ -4,7 +4,7 @@ import { useState, useEffect, Suspense, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { CheckCircle2, XCircle, Zap } from "lucide-react";
+import { CheckCircle2, XCircle, Zap, ArrowLeft, ArrowRight } from "lucide-react";
 import { fetchMistakeQuestions, saveRedoSessionData } from "@/app/actions/redo";
 
 const AUTO_NEXT_MS = 900;
@@ -19,6 +19,12 @@ type Question = {
   fromPractice?: boolean;
 };
 
+type RedoAttempt = {
+  mistakeId: string;
+  selectedAnswer: string;
+  isCorrect: boolean;
+};
+
 function RedoSessionContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -27,7 +33,7 @@ function RedoSessionContent() {
 
   const [questions, setQuestions] = useState<Question[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [attempts, setAttempts] = useState<Array<{ mistakeId: string; isCorrect: boolean }>>([]);
+  const [attempts, setAttempts] = useState<RedoAttempt[]>([]);
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -116,10 +122,11 @@ function RedoSessionContent() {
   }
 
   const currentQuestion = questions[currentIndex];
-  const hasAnswered = selectedOption !== null;
+  const hasAnswered = selectedOption !== null || attempts[currentIndex] !== undefined;
   const isCorrectCurrent = selectedOption === currentQuestion.answer;
+  const progressPct = ((currentIndex + (hasAnswered ? 1 : 0)) / questions.length) * 100;
 
-  const finishRedo = async (finalAttempts: Array<{ mistakeId: string; isCorrect: boolean }>) => {
+  const finishRedo = async (finalAttempts: RedoAttempt[]) => {
     setIsSaving(true);
     const res = await saveRedoSessionData({ attempts: finalAttempts });
     if (res.success) {
@@ -134,12 +141,33 @@ function RedoSessionContent() {
     }
   };
 
-  const goNext = (nextAttempts: Array<{ mistakeId: string; isCorrect: boolean }>) => {
+  const goNext = (nextAttempts: RedoAttempt[]) => {
     if (currentIndex < questions.length - 1) {
       setSelectedOption(null);
       setCurrentIndex((prev) => prev + 1);
     } else {
       finishRedo(nextAttempts);
+    }
+  };
+
+  const handleBack = () => {
+    if (autoNextTimer.current) clearTimeout(autoNextTimer.current);
+    if (currentIndex === 0) return;
+    const prevIndex = currentIndex - 1;
+    setCurrentIndex(prevIndex);
+    const prevAtt = attempts[prevIndex];
+    setSelectedOption(prevAtt ? prevAtt.selectedAnswer : null);
+  };
+
+  const handleForward = () => {
+    if (autoNextTimer.current) clearTimeout(autoNextTimer.current);
+    if (currentIndex < questions.length - 1) {
+      const nextIndex = currentIndex + 1;
+      setCurrentIndex(nextIndex);
+      const nextAtt = attempts[nextIndex];
+      setSelectedOption(nextAtt ? nextAtt.selectedAnswer : null);
+    } else {
+      finishRedo(attempts);
     }
   };
 
@@ -150,7 +178,7 @@ function RedoSessionContent() {
     const isCorrect = key === currentQuestion.answer;
     const nextAttempts = [
       ...attemptsRef.current,
-      { mistakeId: currentQuestion.mistakeId, isCorrect },
+      { mistakeId: currentQuestion.mistakeId, selectedAnswer: key, isCorrect },
     ];
     setAttempts(nextAttempts);
 
@@ -161,38 +189,72 @@ function RedoSessionContent() {
   return (
     <div className="min-h-screen bg-background p-4 md:p-8 flex items-center justify-center">
       <Card className="w-full max-w-3xl p-5 md:p-8 relative overflow-hidden border-primary/20">
-        <div className="absolute top-0 left-0 w-full h-1 bg-primary/40" />
-        {hasAnswered && (
-          <div className="absolute top-3 right-3">
-            {isCorrectCurrent ? (
-              currentQuestion.correctCount >= 1 && !currentQuestion.fromPractice ? (
-                <div className="bg-success/20 text-success px-3 py-1.5 rounded-xl font-bold text-sm border border-success/30 flex items-center gap-1">
-                  <Zap className="w-3.5 h-3.5" /> XP recovered
-                </div>
-              ) : isCorrectCurrent && currentQuestion.correctCount >= 1 ? (
-                <div className="bg-success/20 text-success px-3 py-1.5 rounded-xl font-bold text-sm border border-success/30">
-                  Cleared
-                </div>
-              ) : (
-                <div className="bg-success/20 text-success px-3 py-1.5 rounded-xl font-bold text-sm border border-success/30">
-                  Correct — one more
-                </div>
-              )
-            ) : (
-              <div className="bg-muted text-muted-foreground px-3 py-1.5 rounded-xl font-bold text-sm border border-border">
-                Still incorrect
-              </div>
+        <div className="absolute top-0 left-0 h-1 bg-primary/30 w-full">
+          <div
+            className="h-full bg-primary transition-all duration-300"
+            style={{ width: `${progressPct}%` }}
+          />
+        </div>
+
+        {/* Top Header with Back / Forward navigation */}
+        <div className="flex items-center justify-between mt-2 mb-4">
+          <div className="flex items-center gap-1">
+            {currentIndex > 0 && (
+              <button
+                onClick={handleBack}
+                className="flex items-center justify-center w-9 h-9 rounded-xl hover:bg-muted transition-colors active:scale-95 text-muted-foreground hover:text-foreground"
+                aria-label="Previous question"
+                title="Previous question"
+              >
+                <ArrowLeft className="w-5 h-5" />
+              </button>
+            )}
+            {currentIndex < questions.length - 1 && hasAnswered && (
+              <button
+                onClick={handleForward}
+                className="flex items-center justify-center w-9 h-9 rounded-xl hover:bg-muted transition-colors active:scale-95 text-muted-foreground hover:text-foreground"
+                aria-label="Next question"
+                title="Next question"
+              >
+                <ArrowRight className="w-5 h-5" />
+              </button>
             )}
           </div>
-        )}
 
-        <div className="flex justify-between items-center mb-6 border-b border-border pb-3 mt-4">
-          <span className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
-            {currentIndex + 1} / {questions.length}
-          </span>
-          <span className="text-xs bg-primary/10 text-primary px-2.5 py-1 rounded-lg font-semibold">
-            Redo
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
+              {currentIndex + 1} / {questions.length}
+            </span>
+            <span className="text-xs bg-primary/10 text-primary px-2.5 py-1 rounded-lg font-semibold">
+              Redo
+            </span>
+          </div>
+
+          {hasAnswered ? (
+            <div>
+              {isCorrectCurrent ? (
+                currentQuestion.correctCount >= 1 && !currentQuestion.fromPractice ? (
+                  <div className="bg-success/20 text-success px-2.5 py-1 rounded-xl font-bold text-xs border border-success/30 flex items-center gap-1">
+                    <Zap className="w-3 h-3" /> XP recovered
+                  </div>
+                ) : isCorrectCurrent && currentQuestion.correctCount >= 1 ? (
+                  <div className="bg-success/20 text-success px-2.5 py-1 rounded-xl font-bold text-xs border border-success/30">
+                    Cleared
+                  </div>
+                ) : (
+                  <div className="bg-success/20 text-success px-2.5 py-1 rounded-xl font-bold text-xs border border-success/30">
+                    Correct — 1 more
+                  </div>
+                )
+              ) : (
+                <div className="bg-muted text-muted-foreground px-2.5 py-1 rounded-xl font-bold text-xs border border-border">
+                  Still incorrect
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="w-16" />
+          )}
         </div>
 
         <h2 className="text-xl md:text-2xl font-semibold mb-6 leading-snug">
@@ -239,6 +301,24 @@ function RedoSessionContent() {
             );
           })}
         </div>
+
+        {hasAnswered && (
+          <div className="mt-8 flex justify-end">
+            <Button
+              size="lg"
+              onClick={handleForward}
+              className="px-6 h-11 text-base rounded-xl font-bold gap-2"
+            >
+              {currentIndex < questions.length - 1 ? (
+                <>
+                  Next <ArrowRight className="w-4 h-4" />
+                </>
+              ) : (
+                "Finish Redo"
+              )}
+            </Button>
+          </div>
+        )}
       </Card>
     </div>
   );

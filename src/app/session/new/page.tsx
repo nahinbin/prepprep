@@ -9,7 +9,19 @@ export default async function NewSessionPage() {
   if (!user) redirect("/login");
 
   const [subjects, settings] = await Promise.all([
-    prisma.subject.findMany({ include: { topics: true }, orderBy: { name: "asc" } }),
+    prisma.subject.findMany({
+      where: { userId: user.id },
+      include: {
+        topics: {
+          include: {
+            _count: { select: { questions: true } },
+          },
+          orderBy: { name: "asc" },
+        },
+        _count: { select: { questions: true } },
+      },
+      orderBy: { name: "asc" },
+    }),
     getEconomySettings(),
   ]);
 
