@@ -118,21 +118,26 @@ export default async function ResultPage({ params }: { params: Promise<{ id: str
             </Card>
           )}
 
-          <div className="space-y-3">
-            <Link href={`/session/review/${session.id}`} className="block">
-              <Button variant="outline" size="lg" className="w-full h-14 text-lg font-bold rounded-2xl border-primary/30 hover:bg-primary/10">
-                <ListChecks className="w-5 h-5 mr-2 text-primary" />
-                Review Answers
-              </Button>
-            </Link>
+          {/* Spacer for bottom bar */}
+          <div className="h-24 md:h-10"></div>
+        </div>
+      </div>
 
-            <Link href="/" className="block">
-              <Button size="lg" className="w-full h-14 text-lg font-bold rounded-2xl shadow-lg shadow-primary/20">
-                <Home className="w-5 h-5 mr-2" />
-                Return Home
-              </Button>
-            </Link>
-          </div>
+      {/* Gamified Result Bottom Bar */}
+      <div className="fixed bottom-0 left-0 right-0 z-40 md:left-[17.5rem] bg-background/80 backdrop-blur-xl border-t border-border/50 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-[0_-10px_40px_rgba(0,0,0,0.1)]">
+        <div className="max-w-lg mx-auto flex gap-3">
+          <Link href={`/session/review/${session.id}`} className="flex-1">
+            <Button variant="outline" size="lg" className="w-full h-14 text-base font-bold rounded-2xl border-primary/30 hover:bg-primary/10">
+              <ListChecks className="w-5 h-5 mr-1.5 text-primary" />
+              Review
+            </Button>
+          </Link>
+          <Link href="/" className="flex-1">
+            <Button size="lg" className="w-full h-14 text-base font-bold rounded-2xl shadow-lg shadow-primary/20">
+              <Home className="w-5 h-5 mr-1.5" />
+              Home
+            </Button>
+          </Link>
         </div>
       </div>
     </AppShell>

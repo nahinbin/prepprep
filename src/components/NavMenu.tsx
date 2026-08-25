@@ -149,10 +149,12 @@ export function NavMenu() {
 export function AppShell({
   children,
   showSidebar = true,
+  showBottomBar = true,
   mistakeCount = 0,
 }: {
   children: React.ReactNode;
   showSidebar?: boolean;
+  showBottomBar?: boolean;
   mistakeCount?: number;
 }) {
   return (
@@ -160,9 +162,9 @@ export function AppShell({
       <div className="min-h-screen bg-background game-bg">
         {showSidebar && <Sidebar />}
         <div className={showSidebar ? "md:pl-[17.5rem]" : ""}>
-          <div className="pb-28">{children}</div>
+          <div className={showBottomBar ? "pb-28 md:pb-12" : "pb-12"}>{children}</div>
         </div>
-        <BottomBar mistakeCount={mistakeCount} />
+        {showBottomBar && <BottomBar mistakeCount={mistakeCount} />}
       </div>
     </ShellCtx.Provider>
   );

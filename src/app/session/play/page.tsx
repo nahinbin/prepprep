@@ -6,7 +6,16 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { DEFAULT_ECONOMY } from "@/lib/constants";
 import { saveSessionData } from "@/app/actions/session";
-import { ArrowLeft, ArrowRight, CheckCircle2, XCircle, Coins, Zap } from "lucide-react";
+import {
+  ArrowLeft,
+  ArrowRight,
+  CheckCircle2,
+  XCircle,
+  Coins,
+  Zap,
+  Timer,
+  AlertCircle,
+} from "lucide-react";
 
 const SESSION_KEY = "current_mcq_session";
 const PROGRESS_KEY = "mcq_session_progress";
@@ -17,6 +26,8 @@ type Question = {
   question: string;
   options: Record<string, string>;
   answer: string;
+  subjectName?: string;
+  topicName?: string;
 };
 
 type Attempt = {
@@ -34,6 +45,7 @@ type SessionSettings = {
   xpPerCorrect: number;
   xpPerWrong: number;
   coinsPerCorrect: number;
+  timerSeconds?: number;
 };
 
 type SavedProgress = {
@@ -57,7 +69,14 @@ export default function PlaySessionPage() {
     xpPerCorrect: DEFAULT_ECONOMY.xpPerCorrect,
     xpPerWrong: DEFAULT_ECONOMY.xpPerWrong,
     coinsPerCorrect: DEFAULT_ECONOMY.coinsPerCorrect,
+    timerSeconds: 0,
   });
+
+  // Timer states
+  const [timeLeft, setTimeLeft] = useState<number>(0);
+  const [isTimedOut, setIsTimedOut] = useState<boolean>(false);
+  const timerIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   const attemptsRef = useRef<Attempt[]>([]);
   const autoNextTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -65,11 +84,29 @@ export default function PlaySessionPage() {
     attemptsRef.current = attempts;
   }, [attempts]);
 
+  const clearTimers = useCallback(() => {
+    if (timerIntervalRef.current) {
+      clearInterval(timerIntervalRef.current);
+      timerIntervalRef.current = null;
+    }
+    if (autoNextTimer.current) {
+      clearTimeout(autoNextTimer.current);
+      autoNextTimer.current = null;
+    }
+  }, []);
+
   useEffect(() => {
     return () => {
-      if (autoNextTimer.current) clearTimeout(autoNextTimer.current);
+      clearTimers();
     };
-  }, []);
+  }, [clearTimers]);
+
+  const [subjectInfo, setSubjectInfo] = useState<{
+    subjectName?: string;
+    topicName?: string;
+    subjectId?: string;
+    topicId?: string;
+  }>({});
 
   useEffect(() => {
     const data = sessionStorage.getItem(SESSION_KEY);
@@ -82,11 +119,18 @@ export default function PlaySessionPage() {
       const qs: Question[] = parsed.questions;
       setQuestions(qs);
       setIsPractice(!!parsed.isPractice);
+      setSubjectInfo({
+        subjectName: parsed.subjectName || parsed.settings?.subjectName || qs[0]?.subjectName,
+        topicName: parsed.topicName || parsed.settings?.topicName || qs[0]?.topicName,
+        subjectId: parsed.subjectId || parsed.settings?.subjectId,
+        topicId: parsed.topicId || parsed.settings?.topicId,
+      });
       if (parsed.settings) {
         setSettings({
           xpPerCorrect: parsed.settings.xpPerCorrect ?? DEFAULT_ECONOMY.xpPerCorrect,
           xpPerWrong: parsed.settings.xpPerWrong ?? DEFAULT_ECONOMY.xpPerWrong,
           coinsPerCorrect: parsed.settings.coinsPerCorrect ?? DEFAULT_ECONOMY.coinsPerCorrect,
+          timerSeconds: parsed.settings.timerSeconds ?? 0,
         });
       }
 
@@ -124,18 +168,11 @@ export default function PlaySessionPage() {
     saveProgress(currentIndex, attempts, skippedIds);
   }, [loaded, currentIndex, attempts, skippedIds, questions.length, saveProgress]);
 
-  if (!loaded || questions.length === 0) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        Loading session...
-      </div>
-    );
-  }
-
   const currentQuestion = questions[currentIndex];
-  const hasAnswered = selectedOption !== null || attempts[currentIndex] !== undefined;
+  const hasAnswered = selectedOption !== null || attempts[currentIndex] !== undefined || isTimedOut;
 
   const finishSession = async (finalAttempts: Attempt[]) => {
+    clearTimers();
     setIsSaving(true);
     const correctAnswers = finalAttempts.filter((a) => a.isCorrect).length;
     const wrongAnswers = finalAttempts.filter((a) => !a.isCorrect).length;
@@ -151,6 +188,10 @@ export default function PlaySessionPage() {
       negativePoints,
       netPoints,
       isPractice,
+      subjectName: subjectInfo.subjectName,
+      topicName: subjectInfo.topicName,
+      subjectId: subjectInfo.subjectId,
+      topicId: subjectInfo.topicId,
       attempts: finalAttempts,
     });
 
@@ -174,31 +215,108 @@ export default function PlaySessionPage() {
     finishSession(finalAttempts);
   };
 
-  const goNextOrFinish = (nextAttempts: Attempt[]) => {
+  const goNextOrFinish = useCallback((nextAttempts: Attempt[]) => {
     if (currentIndex < questions.length - 1) {
       setSelectedOption(null);
+      setIsTimedOut(false);
       setCurrentIndex((prev) => prev + 1);
     } else {
       tryComplete(nextAttempts);
     }
-  };
+  }, [currentIndex, questions.length]);
+
+  // Handle timeout expiration on the current question
+  const handleTimeExpired = useCallback(() => {
+    if (isSaving || hasAnswered) return;
+    setIsTimedOut(true);
+
+    const newAttempt: Attempt = {
+      questionId: currentQuestion.id,
+      question: currentQuestion.question,
+      options: JSON.stringify(currentQuestion.options),
+      correctAnswer: currentQuestion.answer,
+      selectedAnswer: "__TIMED_OUT__",
+      isCorrect: false,
+      pointsGained: 0,
+      pointsLost: isPractice ? 0 : settings.xpPerWrong,
+    };
+
+    const nextAttempts = [...attemptsRef.current, newAttempt];
+    setAttempts(nextAttempts);
+
+    if (autoNextTimer.current) clearTimeout(autoNextTimer.current);
+    autoNextTimer.current = setTimeout(() => {
+      goNextOrFinish(nextAttempts);
+    }, AUTO_NEXT_MS + 200);
+  }, [currentQuestion, hasAnswered, isPractice, isSaving, settings.xpPerWrong, goNextOrFinish]);
+
+  // Start / stop timer whenever question or answered state changes
+  useEffect(() => {
+    if (!loaded || questions.length === 0 || !currentQuestion) return;
+
+    if (timerIntervalRef.current) {
+      clearInterval(timerIntervalRef.current);
+      timerIntervalRef.current = null;
+    }
+
+    const currentAttempt = attempts[currentIndex];
+    if (currentAttempt) {
+      // Question was already answered (read-only mode)
+      setSelectedOption(currentAttempt.selectedAnswer);
+      setIsTimedOut(currentAttempt.selectedAnswer === "__TIMED_OUT__");
+      setTimeLeft(0);
+      return;
+    }
+
+    setSelectedOption(null);
+    setIsTimedOut(false);
+
+    if (settings.timerSeconds && settings.timerSeconds > 0) {
+      setTimeLeft(settings.timerSeconds);
+      const startTime = Date.now();
+      const totalMs = settings.timerSeconds * 1000;
+
+      timerIntervalRef.current = setInterval(() => {
+        const elapsed = Date.now() - startTime;
+        const remaining = Math.max(0, Math.ceil((totalMs - elapsed) / 1000));
+        setTimeLeft(remaining);
+
+        if (remaining <= 0) {
+          if (timerIntervalRef.current) {
+            clearInterval(timerIntervalRef.current);
+            timerIntervalRef.current = null;
+          }
+          handleTimeExpired();
+        }
+      }, 250);
+    }
+
+    return () => {
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current);
+        timerIntervalRef.current = null;
+      }
+    };
+  }, [loaded, currentIndex, questions.length, settings.timerSeconds, attempts, handleTimeExpired]);
 
   const handleBack = () => {
-    if (autoNextTimer.current) clearTimeout(autoNextTimer.current);
+    clearTimers();
     if (currentIndex === 0) return;
     const prevIndex = currentIndex - 1;
     setCurrentIndex(prevIndex);
     const prevAttempt = attempts[prevIndex];
     setSelectedOption(prevAttempt ? prevAttempt.selectedAnswer : null);
+    setIsTimedOut(prevAttempt?.selectedAnswer === "__TIMED_OUT__");
   };
 
   const handleForward = () => {
-    if (autoNextTimer.current) clearTimeout(autoNextTimer.current);
+    clearTimers();
     if (currentIndex < questions.length - 1) {
       const nextIndex = currentIndex + 1;
       setCurrentIndex(nextIndex);
       const nextAttempt = attempts[nextIndex];
       setSelectedOption(nextAttempt ? nextAttempt.selectedAnswer : null);
+      setIsTimedOut(nextAttempt?.selectedAnswer === "__TIMED_OUT__");
     } else {
       tryComplete(attempts);
     }
@@ -206,6 +324,7 @@ export default function PlaySessionPage() {
 
   const handleOptionSelect = (key: string) => {
     if (hasAnswered || isSaving) return;
+    clearTimers();
 
     setSelectedOption(key);
 
@@ -232,28 +351,40 @@ export default function PlaySessionPage() {
 
   const handleSkip = () => {
     if (hasAnswered) return;
-    if (autoNextTimer.current) clearTimeout(autoNextTimer.current);
+    clearTimers();
     const nextSkipped = new Set(skippedIds);
     nextSkipped.add(currentQuestion.id);
     setSkippedIds(nextSkipped);
     goNextOrFinish(attempts);
   };
 
+  if (!loaded || questions.length === 0) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center font-bold">
+        Loading session...
+      </div>
+    );
+  }
+
   const isCorrectCurrent = selectedOption === currentQuestion.answer;
   const skippedTotal = questions.length - attempts.length;
   const progressPct = ((currentIndex + (hasAnswered ? 1 : 0)) / questions.length) * 100;
+  const timerEnabled = (settings.timerSeconds ?? 0) > 0;
 
   return (
-    <div className="min-h-screen bg-background p-4 md:p-8 flex items-center justify-center">
-      <Card className="w-full max-w-3xl p-5 md:p-8 relative overflow-hidden">
-        <div className="absolute top-0 left-0 h-1 bg-primary/30 w-full">
+    <div className="min-h-screen bg-background p-3 sm:p-4 md:p-8 flex items-center justify-center">
+      <Card className="w-full max-w-3xl p-4 sm:p-6 md:p-8 relative overflow-hidden">
+        {/* Top Progress Bar */}
+        <div className="absolute top-0 left-0 h-1.5 bg-primary/25 w-full">
           <div
             className="h-full bg-primary transition-all duration-300"
             style={{ width: `${progressPct}%` }}
           />
         </div>
 
-        <div className="flex items-center justify-between mt-2 mb-4">
+        {/* Top Controls: Back/Forward, Timer, Question Counter, Score */}
+        <div className="flex items-center justify-between mt-2 mb-4 gap-2">
+          {/* Navigation Arrows */}
           <div className="flex items-center gap-1">
             {currentIndex > 0 && (
               <button
@@ -277,22 +408,42 @@ export default function PlaySessionPage() {
             )}
           </div>
 
+          {/* Middle: Question Counter & Timer */}
           <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
+            <span className="text-xs sm:text-sm font-bold text-muted-foreground uppercase tracking-wider">
               {currentIndex + 1} / {questions.length}
             </span>
             {isPractice && (
-              <span className="text-xs bg-primary/10 text-primary px-2.5 py-1 rounded-lg font-semibold">
+              <span className="text-[11px] bg-primary/10 text-primary px-2 py-0.5 rounded-lg font-bold">
                 Practice
               </span>
             )}
+            {timerEnabled && (
+              <div
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-black transition-colors ${
+                  isTimedOut
+                    ? "bg-danger text-white animate-pulse shadow-lg shadow-danger/20"
+                    : timeLeft <= 3 && !hasAnswered
+                    ? "bg-danger/15 text-danger animate-pulse"
+                    : "bg-amber-500/15 text-amber-500"
+                }`}
+              >
+                <Timer className="w-4 h-4" />
+                <span className="text-sm">{isTimedOut ? "Time's Up!" : `${timeLeft}s`}</span>
+              </div>
+            )}
           </div>
 
+          {/* Right Status Badge */}
           {hasAnswered ? (
-            <div className="flex items-center gap-2">
-              {isPractice ? (
+            <div className="flex items-center gap-1.5">
+              {isTimedOut ? (
+                <div className="bg-danger/20 text-danger px-2.5 py-1 rounded-xl font-bold text-xs flex items-center border border-danger/30">
+                  <AlertCircle className="w-3.5 h-3.5 mr-1" /> Time Out
+                </div>
+              ) : isPractice ? (
                 <div
-                  className={`px-3 py-1 rounded-xl font-bold text-xs border ${
+                  className={`px-2.5 py-1 rounded-xl font-bold text-xs border ${
                     isCorrectCurrent
                       ? "bg-success/20 text-success border-success/30"
                       : "bg-danger/20 text-danger border-danger/30"
@@ -302,29 +453,43 @@ export default function PlaySessionPage() {
                 </div>
               ) : isCorrectCurrent ? (
                 <>
-                  <div className="bg-success/20 text-success px-2.5 py-1 rounded-xl font-bold text-xs flex items-center border border-success/30">
+                  <div className="bg-success/20 text-success px-2 py-1 rounded-xl font-bold text-xs flex items-center border border-success/30">
                     <Zap className="w-3 h-3 mr-1" /> +{settings.xpPerCorrect}
                   </div>
-                  <div className="bg-amber-500/20 text-amber-500 px-2.5 py-1 rounded-xl font-bold text-xs flex items-center border border-amber-500/30">
+                  <div className="bg-amber-500/20 text-amber-500 px-2 py-1 rounded-xl font-bold text-xs flex items-center border border-amber-500/30">
                     <Coins className="w-3 h-3 mr-1" /> +{settings.coinsPerCorrect}
                   </div>
                 </>
               ) : (
-                <div className="bg-danger/20 text-danger px-2.5 py-1 rounded-xl font-bold text-xs flex items-center border border-danger/30">
+                <div className="bg-danger/20 text-danger px-2 py-1 rounded-xl font-bold text-xs flex items-center border border-danger/30">
                   <Zap className="w-3 h-3 mr-1" /> -{settings.xpPerWrong}
                 </div>
               )}
             </div>
           ) : (
-            <div className="w-16" />
+            <div className="w-12" />
           )}
         </div>
 
-        <h2 className="text-xl md:text-2xl font-semibold mb-6 leading-snug">
+        {/* Gamified Timer Bar */}
+        {timerEnabled && !hasAnswered && !isTimedOut && (
+          <div className="w-full h-2.5 bg-muted rounded-full overflow-hidden mb-5 border border-border/50 shadow-inner">
+            <div
+              className={`h-full transition-all duration-250 ease-linear rounded-full ${
+                timeLeft <= 3 ? "bg-danger shadow-[0_0_10px_rgba(239,68,68,0.8)] animate-pulse" : "bg-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.6)]"
+              }`}
+              style={{ width: `${(timeLeft / (settings.timerSeconds || 1)) * 100}%` }}
+            />
+          </div>
+        )}
+
+        {/* Question Text */}
+        <h2 className="text-lg sm:text-xl md:text-2xl font-bold mb-5 leading-snug">
           {currentQuestion.question}
         </h2>
 
-        <div className="space-y-3">
+        {/* Options */}
+        <div className="space-y-2.5">
           {Object.entries(currentQuestion.options).map(([key, value]) => {
             const isSelected = selectedOption === key;
             const isCorrectAnswer = key === currentQuestion.answer;
@@ -335,12 +500,12 @@ export default function PlaySessionPage() {
             if (hasAnswered) {
               if (isCorrectAnswer) {
                 buttonStyle =
-                  "border-success bg-success/10 text-success-foreground shadow-sm shadow-success/20";
-                Icon = <CheckCircle2 className="w-5 h-5 text-success" />;
+                  "border-success bg-success/15 text-success-foreground shadow-sm shadow-success/20 font-semibold";
+                Icon = <CheckCircle2 className="w-5 h-5 text-success shrink-0" />;
               } else if (isSelected && !isCorrectAnswer) {
                 buttonStyle =
-                  "border-danger bg-danger/10 text-danger-foreground shadow-sm shadow-danger/20";
-                Icon = <XCircle className="w-5 h-5 text-danger" />;
+                  "border-danger bg-danger/15 text-danger-foreground shadow-sm shadow-danger/20 font-semibold";
+                Icon = <XCircle className="w-5 h-5 text-danger shrink-0" />;
               } else {
                 buttonStyle = "border-border opacity-50 bg-background/20";
               }
@@ -351,13 +516,13 @@ export default function PlaySessionPage() {
                 key={key}
                 onClick={() => handleOptionSelect(key)}
                 disabled={hasAnswered}
-                className={`w-full text-left p-4 md:p-5 rounded-xl border-2 transition-all duration-200 flex justify-between items-center ${buttonStyle}`}
+                className={`w-full text-left p-3.5 sm:p-4 rounded-xl border-2 transition-all duration-150 flex justify-between items-center gap-3 ${buttonStyle}`}
               >
                 <div className="flex items-center min-w-0">
-                  <span className="font-bold text-base md:text-lg mr-3 opacity-70 w-6 shrink-0">
+                  <span className="font-black text-sm sm:text-base mr-3 opacity-75 w-5 shrink-0">
                     {key}.
                   </span>
-                  <span className="text-base md:text-lg">{value}</span>
+                  <span className="text-sm sm:text-base leading-snug">{value}</span>
                 </div>
                 {Icon}
               </button>
@@ -365,13 +530,14 @@ export default function PlaySessionPage() {
           })}
         </div>
 
-        <div className="mt-8 flex justify-between items-center">
+        {/* Bottom Actions */}
+        <div className="mt-7 flex justify-between items-center">
           {!hasAnswered ? (
             <Button
               size="lg"
               variant="outline"
               onClick={handleSkip}
-              className="px-6 h-11 text-base rounded-xl"
+              className="px-6 h-11 text-sm rounded-xl font-bold"
             >
               Skip
             </Button>
@@ -383,7 +549,7 @@ export default function PlaySessionPage() {
             <Button
               size="lg"
               onClick={handleForward}
-              className="px-6 h-11 text-base rounded-xl font-bold gap-2"
+              className="px-6 h-11 text-sm rounded-xl font-bold gap-2"
             >
               {currentIndex < questions.length - 1 ? (
                 <>
@@ -397,6 +563,7 @@ export default function PlaySessionPage() {
         </div>
       </Card>
 
+      {/* Skip Confirmation Modal */}
       {showFinishConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />

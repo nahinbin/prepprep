@@ -172,9 +172,6 @@ export function QuestionsClient({
               <Database className="w-7 h-7 text-primary" />
               Question Bank
             </h1>
-            <p className="text-sm text-muted-foreground">
-              Your personal repository of saved questions across all subjects
-            </p>
           </div>
 
           <div className="flex items-center gap-3">

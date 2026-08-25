@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { Play, Sparkles, BookOpen } from "lucide-react";
+import { Gamepad2, Target, BookOpen } from "lucide-react";
 import { Suspense } from "react";
 
 function BottomBarInner({ mistakeCount = 0 }: { mistakeCount?: number }) {
@@ -11,15 +11,16 @@ function BottomBarInner({ mistakeCount = 0 }: { mistakeCount?: number }) {
   const mode = searchParams.get("mode");
 
   const playActive = pathname === "/session/new" && mode !== "practice";
-  const freeActive = pathname === "/session/new" && mode === "practice";
+  const practiceActive = pathname === "/session/new" && mode === "practice";
   const mistakesActive = pathname === "/mistakes" || pathname.startsWith("/session/redo");
 
-  // Hide on play/redo screens
-  if (pathname.startsWith("/session/play") || pathname.startsWith("/session/redo")) {
-    return null;
-  }
-  if (pathname.startsWith("/session/result")) return null;
-  if (pathname.startsWith("/admin") || pathname === "/login" || pathname === "/register") {
+  // Hide on all session flow pages (play, redo, result, review, new configuration) and auth/admin
+  if (
+    pathname.startsWith("/session") ||
+    pathname.startsWith("/admin") ||
+    pathname === "/login" ||
+    pathname === "/register"
+  ) {
     return null;
   }
 
@@ -30,11 +31,11 @@ function BottomBarInner({ mistakeCount = 0 }: { mistakeCount?: number }) {
           <Link
             href="/session/new?mode=practice"
             className={`flex flex-col items-center justify-center flex-1 py-2 rounded-2xl transition-all active:scale-95 ${
-              freeActive ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-foreground"
+              practiceActive ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-foreground"
             }`}
           >
-            <Sparkles className={`w-6 h-6 mb-0.5 ${freeActive ? "scale-110" : ""}`} />
-            <span className="text-xs font-bold tracking-wide">Free</span>
+            <Target className={`w-6 h-6 mb-0.5 ${practiceActive ? "scale-110" : ""}`} />
+            <span className="text-xs font-bold tracking-wide">Practice</span>
           </Link>
 
           <Link
@@ -49,7 +50,7 @@ function BottomBarInner({ mistakeCount = 0 }: { mistakeCount?: number }) {
                   : "bg-primary hover:brightness-110"
               }`}
             >
-              <Play className="w-7 h-7 text-primary-foreground fill-primary-foreground ml-0.5" />
+              <Gamepad2 className="w-7 h-7 text-primary-foreground" />
             </span>
           </Link>
 

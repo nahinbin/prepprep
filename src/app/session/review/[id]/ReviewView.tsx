@@ -16,6 +16,7 @@ import {
   Zap,
   Filter,
   Sparkles,
+  Timer,
 } from "lucide-react";
 import { saveQuestionsFromSession } from "@/app/actions/session";
 
@@ -93,7 +94,9 @@ export function ReviewView({ session, attempts }: ReviewViewProps) {
       };
     });
 
-    const res = await saveQuestionsFromSession(questionsToSave);
+    const res = await saveQuestionsFromSession({
+      questionsToSave,
+    });
 
     setIsSaving(false);
     if (res.success) {
@@ -101,8 +104,9 @@ export function ReviewView({ session, attempts }: ReviewViewProps) {
       questionsToSave.forEach((q) => nextSaved.add(q.question));
       setSavedQuestionTexts(nextSaved);
       setSelectedIndices(new Set());
+      const dest = res.subjectName ? `"${res.subjectName}"` : "Question Bank";
       setSaveStatus({
-        message: `Successfully saved ${res.savedCount} question(s) to "Saved Questions"!`,
+        message: `Successfully saved ${res.savedCount} question(s) to ${dest}!`,
         type: "success",
       });
       setTimeout(() => setSaveStatus(null), 5000);
@@ -118,19 +122,22 @@ export function ReviewView({ session, attempts }: ReviewViewProps) {
     setIsSaving(true);
     setSaveStatus(null);
 
-    const res = await saveQuestionsFromSession([
-      {
-        question: att.question,
-        options: att.rawOptions,
-        correctAnswer: att.correctAnswer,
-      },
-    ]);
+    const res = await saveQuestionsFromSession({
+      questionsToSave: [
+        {
+          question: att.question,
+          options: att.rawOptions,
+          correctAnswer: att.correctAnswer,
+        },
+      ],
+    });
 
     setIsSaving(false);
     if (res.success) {
       setSavedQuestionTexts((prev) => new Set(prev).add(att.question));
+      const dest = res.subjectName ? `"${res.subjectName}"` : "Question Bank";
       setSaveStatus({
-        message: `Saved to "Saved Questions"!`,
+        message: `Saved to ${dest}!`,
         type: "success",
       });
       setTimeout(() => setSaveStatus(null), 4000);
@@ -328,6 +335,10 @@ export function ReviewView({ session, attempts }: ReviewViewProps) {
                       {att.isCorrect ? (
                         <span className="inline-flex items-center gap-1 text-xs font-bold text-success bg-success/15 px-2.5 py-1 rounded-xl border border-success/30">
                           <CheckCircle2 className="w-3.5 h-3.5" /> Correct
+                        </span>
+                      ) : att.selectedAnswer === "__TIMED_OUT__" ? (
+                        <span className="inline-flex items-center gap-1 text-xs font-bold text-danger bg-danger/15 px-2.5 py-1 rounded-xl border border-danger/30">
+                          <Timer className="w-3.5 h-3.5" /> Timed Out
                         </span>
                       ) : (
                         <span className="inline-flex items-center gap-1 text-xs font-bold text-danger bg-danger/15 px-2.5 py-1 rounded-xl border border-danger/30">

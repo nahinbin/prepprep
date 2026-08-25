@@ -7,7 +7,8 @@ import { Input } from "@/components/ui/Input";
 import { Card } from "@/components/ui/Card";
 import { NavMenu, AppShell } from "@/components/NavMenu";
 import { BackButton } from "@/components/BackButton";
-import { Coins, Upload, User as UserIcon, Trophy, TrendingUp, TrendingDown } from "lucide-react";
+import { Coins, Upload, User as UserIcon, Trophy, TrendingUp, TrendingDown, Shield } from "lucide-react";
+import { getLevelInfo } from "@/lib/levels";
 
 export function ProfileForm({ user }: { user: any }) {
   const [error, setError] = useState("");
@@ -49,6 +50,8 @@ export function ProfileForm({ user }: { user: any }) {
 
   const netXp = user.positivePoints - user.negativePoints;
 
+  const lvl = getLevelInfo(netXp);
+
   return (
     <AppShell>
     <div className="min-h-screen p-4 md:p-8 flex items-center justify-center">
@@ -82,14 +85,34 @@ export function ProfileForm({ user }: { user: any }) {
               </div>
             </div>
 
-            <div className="bg-primary/5 border border-primary/20 p-4 rounded-[var(--radius)] flex items-center justify-between shadow-sm">
-              <div className="flex items-center">
-                <Trophy className="w-6 h-6 text-primary mr-3" />
-                <span className="font-medium">Net XP</span>
+            {/* Level Card */}
+            <div className="bg-primary/5 border border-primary/20 p-5 rounded-2xl shadow-sm space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Shield className={`w-5 h-5 ${lvl.color}`} />
+                  <span className={`font-black text-base ${lvl.color}`}>{lvl.title}</span>
+                </div>
+                <span className="text-2xl font-black text-primary">Lv {lvl.level}</span>
               </div>
-              <span className={`text-2xl font-bold ${netXp >= 0 ? "text-primary" : "text-danger"}`}>
-                {netXp}
-              </span>
+              {/* XP progress bar */}
+              <div className="w-full h-3 bg-muted rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-primary rounded-full xp-bar-glow transition-all duration-500"
+                  style={{ width: `${lvl.progress}%` }}
+                />
+              </div>
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span>{lvl.xpIntoLevel} XP</span>
+                {lvl.xpEnd !== Infinity ? (
+                  <span>{lvl.xpForLevel} XP to next level</span>
+                ) : (
+                  <span className="text-primary font-bold">MAX LEVEL</span>
+                )}
+              </div>
+              <div className="flex items-center justify-between text-xs pt-1 border-t border-border">
+                <span className="text-muted-foreground flex items-center gap-1"><Trophy className="w-3.5 h-3.5" /> Net XP</span>
+                <span className={`font-black ${netXp >= 0 ? "text-primary" : "text-danger"}`}>{netXp}</span>
+              </div>
             </div>
           </div>
 

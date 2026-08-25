@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/app/actions/auth";
 import { getEconomySettings } from "@/app/actions/settings";
+import { findOrCreateSubjectTopic } from "@/app/actions/economy";
 import { revalidatePath } from "next/cache";
 
 export async function saveSessionData(data: {
@@ -13,6 +14,10 @@ export async function saveSessionData(data: {
   negativePoints: number;
   netPoints: number;
   isPractice?: boolean;
+  subjectName?: string;
+  topicName?: string;
+  subjectId?: string;
+  topicId?: string;
   attempts: Array<{
     questionId: string;
     question: string;
@@ -58,25 +63,41 @@ export async function saveSessionData(data: {
     },
   });
 
-  // Handle mistakes: for any incorrect answer, ensure a Question record exists under this user
+  // Handle mistakes: for any incorrect answer, ensure a Question record exists under the REAL subject and topic
   const wrongAttempts = data.attempts.filter((a) => !a.isCorrect);
   if (wrongAttempts.length > 0) {
-    let mistakesSubject = await prisma.subject.findFirst({
-      where: { userId: user.id, name: "Mistakes Review" },
-    });
-    if (!mistakesSubject) {
-      mistakesSubject = await prisma.subject.create({
-        data: { name: "Mistakes Review", userId: user.id },
-      });
-    }
+    // Resolve subject and topic for this user
+    let targetSubjectId = data.subjectId;
+    let targetTopicId = data.topicId;
 
-    let mistakesTopic = await prisma.topic.findFirst({
-      where: { subjectId: mistakesSubject.id, name: "General" },
-    });
-    if (!mistakesTopic) {
-      mistakesTopic = await prisma.topic.create({
-        data: { name: "General", subjectId: mistakesSubject.id },
-      });
+    if (!targetSubjectId || !targetTopicId) {
+      if (data.subjectName && data.topicName) {
+        const { subject, topic } = await findOrCreateSubjectTopic(
+          user.id,
+          data.subjectName,
+          data.topicName
+        );
+        targetSubjectId = subject.id;
+        targetTopicId = topic.id;
+      } else {
+        // Fallback to user's first available subject and topic
+        const firstSub = await prisma.subject.findFirst({
+          where: { userId: user.id },
+          include: { topics: true },
+        });
+        if (firstSub && firstSub.topics.length > 0) {
+          targetSubjectId = firstSub.id;
+          targetTopicId = firstSub.topics[0].id;
+        } else {
+          const { subject, topic } = await findOrCreateSubjectTopic(
+            user.id,
+            data.subjectName || "General",
+            data.topicName || "General"
+          );
+          targetSubjectId = subject.id;
+          targetTopicId = topic.id;
+        }
+      }
     }
 
     for (const a of wrongAttempts) {
@@ -89,7 +110,7 @@ export async function saveSessionData(data: {
       });
 
       if (!q) {
-        // Find existing matching text or create under user's mistakes topic
+        // Find existing matching text under user's subjects
         q = await prisma.question.findFirst({
           where: {
             subject: { userId: user.id },
@@ -100,8 +121,8 @@ export async function saveSessionData(data: {
         if (!q) {
           q = await prisma.question.create({
             data: {
-              subjectId: mistakesSubject.id,
-              topicId: mistakesTopic.id,
+              subjectId: targetSubjectId!,
+              topicId: targetTopicId!,
               question: a.question,
               options: a.options,
               correctAnswer: a.correctAnswer,
@@ -144,52 +165,85 @@ export async function saveSessionData(data: {
     }
   }
 
+  revalidatePath("/mistakes");
+  revalidatePath("/session/new");
+  revalidatePath("/subjects");
+  revalidatePath("/questions");
+
   return { sessionId: session.id };
 }
 
-export async function saveQuestionsFromSession(
+export async function saveQuestionsFromSession({
+  questionsToSave,
+  subjectName,
+  topicName,
+  subjectId,
+  topicId,
+}: {
   questionsToSave: Array<{
     question: string;
     options: string;
     correctAnswer: string;
-  }>
-) {
+  }>;
+  subjectName?: string;
+  topicName?: string;
+  subjectId?: string;
+  topicId?: string;
+}) {
   const user = await getSession();
   if (!user) return { error: "Not authenticated" };
   if (!questionsToSave || questionsToSave.length === 0) {
     return { error: "No questions selected" };
   }
 
-  // 1. Find or create the "Saved Questions" subject strictly for THIS user
-  let savedSubject = await prisma.subject.findFirst({
-    where: { userId: user.id, name: "Saved Questions" },
-  });
-  if (!savedSubject) {
-    savedSubject = await prisma.subject.create({
-      data: { name: "Saved Questions", userId: user.id },
-    });
+  // 1. Resolve actual user subject and topic
+  let targetSubjectId = subjectId;
+  let targetTopicId = topicId;
+  let finalSubjectName = subjectName;
+  let finalTopicName = topicName;
+
+  if (!targetSubjectId || !targetTopicId) {
+    if (subjectName && topicName) {
+      const { subject, topic } = await findOrCreateSubjectTopic(
+        user.id,
+        subjectName,
+        topicName
+      );
+      targetSubjectId = subject.id;
+      targetTopicId = topic.id;
+      finalSubjectName = subject.name;
+      finalTopicName = topic.name;
+    } else {
+      const firstSub = await prisma.subject.findFirst({
+        where: { userId: user.id },
+        include: { topics: true },
+      });
+      if (firstSub && firstSub.topics.length > 0) {
+        targetSubjectId = firstSub.id;
+        targetTopicId = firstSub.topics[0].id;
+        finalSubjectName = firstSub.name;
+        finalTopicName = firstSub.topics[0].name;
+      } else {
+        const { subject, topic } = await findOrCreateSubjectTopic(
+          user.id,
+          "General",
+          "General"
+        );
+        targetSubjectId = subject.id;
+        targetTopicId = topic.id;
+        finalSubjectName = subject.name;
+        finalTopicName = topic.name;
+      }
+    }
   }
 
-  // 2. Find or create the "Session Review" topic
-  let savedTopic = await prisma.topic.findFirst({
-    where: { subjectId: savedSubject.id, name: "Session Review" },
-  });
-  if (!savedTopic) {
-    savedTopic = await prisma.topic.create({
-      data: {
-        name: "Session Review",
-        subjectId: savedSubject.id,
-      },
-    });
-  }
-
-  // 3. Insert each question into the user's Question Bank
+  // 2. Insert each question into the user's Question Bank under that subject & topic
   let savedCount = 0;
   for (const item of questionsToSave) {
     const existing = await prisma.question.findFirst({
       where: {
-        subjectId: savedSubject.id,
-        topicId: savedTopic.id,
+        subjectId: targetSubjectId,
+        topicId: targetTopicId,
         question: item.question,
       },
     });
@@ -197,8 +251,8 @@ export async function saveQuestionsFromSession(
     if (!existing) {
       await prisma.question.create({
         data: {
-          subjectId: savedSubject.id,
-          topicId: savedTopic.id,
+          subjectId: targetSubjectId!,
+          topicId: targetTopicId!,
           question: item.question,
           options: item.options,
           correctAnswer: item.correctAnswer,
@@ -211,5 +265,11 @@ export async function saveQuestionsFromSession(
   revalidatePath("/session/new");
   revalidatePath("/subjects");
   revalidatePath("/questions");
-  return { success: true, savedCount, total: questionsToSave.length };
+  return {
+    success: true,
+    savedCount,
+    total: questionsToSave.length,
+    subjectName: finalSubjectName,
+    topicName: finalTopicName,
+  };
 }

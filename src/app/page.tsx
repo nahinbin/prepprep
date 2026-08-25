@@ -1,7 +1,7 @@
 import { getSession } from "./actions/auth";
 import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
-import { User as UserIcon, Zap } from "lucide-react";
+import { User as UserIcon, Zap, Gamepad2 } from "lucide-react";
 import Link from "next/link";
 import { NavMenu, AppShell } from "@/components/NavMenu";
 import { GameHUD } from "@/components/GameHUD";
@@ -80,21 +80,21 @@ export default async function Dashboard() {
         <div className="w-full max-w-4xl mx-auto hidden md:flex flex-col items-center justify-center flex-1 min-h-[40vh] text-center">
           <div className="w-24 h-24 rounded-full bg-primary/15 border border-primary/30 flex items-center justify-center mb-5 animate-pulse">
             <div className="w-16 h-16 rounded-full bg-primary flex items-center justify-center shadow-xl shadow-primary/40">
-              <span className="text-3xl font-black text-primary-foreground">▶</span>
+              <Gamepad2 className="w-8 h-8 text-primary-foreground" />
             </div>
           </div>
-          <p className="text-xl font-bold text-foreground/90">Tap play below to start</p>
-          <p className="text-muted-foreground mt-1">Free practice · Paid session · Mistakes</p>
+          <p className="text-xl font-bold text-foreground/90">Tap Play below to enter the Arena</p>
+          <p className="text-muted-foreground mt-1">Practice · Ranked Session · Mistakes</p>
         </div>
 
         <div className="w-full max-w-4xl mx-auto md:hidden flex-1 flex flex-col items-center justify-center min-h-[45vh] text-center px-4">
           <div className="w-20 h-20 rounded-full bg-primary/15 border border-primary/30 flex items-center justify-center mb-4">
             <div className="w-14 h-14 rounded-full bg-primary flex items-center justify-center shadow-lg shadow-primary/40">
-              <span className="text-2xl font-black text-primary-foreground">▶</span>
+              <Gamepad2 className="w-7 h-7 text-primary-foreground" />
             </div>
           </div>
-          <p className="text-2xl font-black">Let&apos;s go</p>
-          <p className="text-muted-foreground mt-1 text-base">Use the dock below</p>
+          <p className="text-2xl font-black">Enter the Arena</p>
+          <p className="text-muted-foreground mt-1 text-base">Use the dock below to start</p>
         </div>
       </div>
     </AppShell>
