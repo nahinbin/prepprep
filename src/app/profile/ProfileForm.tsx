@@ -18,35 +18,62 @@ import {
   Camera,
   Check,
   Zap,
+  Pencil,
+  X,
 } from "lucide-react";
 import { getLevelInfo } from "@/lib/levels";
 
 export function ProfileForm({ user }: { user: any }) {
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState(false);
+  const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
   const [profilePic, setProfilePic] = useState<string>(user.profilePicture || "");
+  const [isEditingUsername, setIsEditingUsername] = useState(false);
+  const [usernameInput, setUsernameInput] = useState(user.username);
+  const [currentUsername, setCurrentUsername] = useState(user.username);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
-      reader.onloadend = () => {
-        setProfilePic(reader.result as string);
+      reader.onloadend = async () => {
+        const base64 = reader.result as string;
+        setProfilePic(base64);
+        setLoading(true);
+        setError("");
+        setSuccess("");
+
+        const formData = new FormData();
+        formData.append("username", currentUsername);
+        formData.append("profilePicture", base64);
+
+        const res = await updateProfile(formData);
+        if (res?.error) {
+          setError(res.error);
+        } else {
+          setSuccess("Profile picture updated!");
+          setTimeout(() => setSuccess(""), 3000);
+        }
+        setLoading(false);
       };
       reader.readAsDataURL(file);
     }
   };
 
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
+  const handleSaveUsername = async () => {
+    if (!usernameInput.trim() || usernameInput.trim() === currentUsername) {
+      setIsEditingUsername(false);
+      return;
+    }
+
     setLoading(true);
     setError("");
-    setSuccess(false);
+    setSuccess("");
 
-    const formData = new FormData(e.currentTarget);
-    if (profilePic !== user.profilePicture) {
+    const formData = new FormData();
+    formData.append("username", usernameInput.trim());
+    if (profilePic) {
       formData.append("profilePicture", profilePic);
     }
 
@@ -54,10 +81,13 @@ export function ProfileForm({ user }: { user: any }) {
     if (res?.error) {
       setError(res.error);
     } else {
-      setSuccess(true);
+      setCurrentUsername(usernameInput.trim());
+      setIsEditingUsername(false);
+      setSuccess("Username updated!");
+      setTimeout(() => setSuccess(""), 3000);
     }
     setLoading(false);
-  }
+  };
 
   const netXp = user.positivePoints - user.negativePoints;
   const lvl = getLevelInfo(netXp);
@@ -74,7 +104,7 @@ export function ProfileForm({ user }: { user: any }) {
           <NavMenu />
         </div>
 
-        {/* Hero Avatar & Level Section (Seen First!) */}
+        {/* Hero Avatar & Username Section (Seen First!) */}
         <div className="w-full text-center space-y-3">
           <div className="relative inline-block mx-auto">
             <div
@@ -82,7 +112,7 @@ export function ProfileForm({ user }: { user: any }) {
               onClick={() => fileInputRef.current?.click()}
             >
               {profilePic ? (
-                <img src={profilePic} alt={user.username} className="w-full h-full object-cover" />
+                <img src={profilePic} alt={currentUsername} className="w-full h-full object-cover" />
               ) : (
                 <UserIcon className="w-14 h-14 text-muted-foreground" />
               )}
@@ -108,14 +138,72 @@ export function ProfileForm({ user }: { user: any }) {
             />
           </div>
 
+          {/* Inline Username with Pin/Pencil Edit Icon */}
           <div>
-            <h2 className="text-2xl sm:text-3xl font-black text-foreground">{user.username}</h2>
-            <div className="inline-flex items-center gap-2 mt-1.5 px-3 py-1 rounded-xl bg-primary/15 border border-primary/30">
+            {isEditingUsername ? (
+              <div className="flex items-center justify-center gap-2 max-w-xs mx-auto animate-fade-in">
+                <Input
+                  value={usernameInput}
+                  onChange={(e) => setUsernameInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleSaveUsername();
+                    if (e.key === "Escape") setIsEditingUsername(false);
+                  }}
+                  className="h-11 text-lg font-bold rounded-2xl border-2 text-center"
+                  autoFocus
+                />
+                <Button
+                  size="sm"
+                  onClick={handleSaveUsername}
+                  isLoading={loading}
+                  className="h-11 px-3.5 rounded-2xl font-black shrink-0"
+                >
+                  <Check className="w-4 h-4" />
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setIsEditingUsername(false)}
+                  className="h-11 px-3 rounded-2xl font-bold shrink-0"
+                >
+                  <X className="w-4 h-4" />
+                </Button>
+              </div>
+            ) : (
+              <div className="flex items-center justify-center gap-2">
+                <h2 className="text-2xl sm:text-3xl font-black text-foreground">{currentUsername}</h2>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUsernameInput(currentUsername);
+                    setIsEditingUsername(true);
+                  }}
+                  className="p-1.5 rounded-xl text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+                  title="Edit Username"
+                >
+                  <Pencil className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+
+            <div className="inline-flex items-center gap-2 mt-2 px-3.5 py-1 rounded-xl bg-primary/15 border border-primary/30 shadow-xs">
               <Shield className={`w-4 h-4 ${lvl.color}`} />
               <span className={`text-sm font-black ${lvl.color}`}>{lvl.title}</span>
               <span className="text-xs font-bold text-muted-foreground">· Level {lvl.level}</span>
             </div>
           </div>
+
+          {/* Feedback messages */}
+          {error && (
+            <p className="text-sm font-bold text-danger text-center bg-danger/10 p-3 rounded-2xl border border-danger/20 animate-fade-in max-w-sm mx-auto">
+              {error}
+            </p>
+          )}
+          {success && (
+            <p className="text-sm font-bold text-success text-center bg-success/10 p-3 rounded-2xl border border-success/20 flex items-center justify-center gap-1.5 animate-fade-in max-w-sm mx-auto">
+              <Check className="w-4 h-4" /> {success}
+            </p>
+          )}
         </div>
 
         {/* Level & XP Progress Card */}
@@ -123,7 +211,7 @@ export function ProfileForm({ user }: { user: any }) {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Zap className="w-5 h-5 text-primary fill-primary/30" />
-              <span className="font-black text-base">XP Progress</span>
+              <span className="font-black text-base">XP Progression</span>
             </div>
             <span className="text-base font-black text-primary tabular-nums">{netXp} XP</span>
           </div>
@@ -175,43 +263,6 @@ export function ProfileForm({ user }: { user: any }) {
             <span className="text-xl sm:text-2xl font-black text-primary tabular-nums">{netXp}</span>
           </div>
         </div>
-
-        {/* Account Details Form */}
-        <Card className="w-full p-6 sm:p-7 rounded-3xl border-2 space-y-5 bg-card shadow-md">
-          <h3 className="text-base font-black text-foreground">Account Settings</h3>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-1.5">
-              <label className="text-xs font-black text-muted-foreground uppercase tracking-wider block">
-                Username
-              </label>
-              <Input
-                name="username"
-                defaultValue={user.username}
-                required
-                className="h-12 text-base font-bold rounded-2xl border-2"
-              />
-            </div>
-
-            {error && (
-              <p className="text-sm font-bold text-danger text-center bg-danger/10 p-3 rounded-xl border border-danger/20">
-                {error}
-              </p>
-            )}
-            {success && (
-              <p className="text-sm font-bold text-success text-center bg-success/10 p-3 rounded-xl border border-success/20 flex items-center justify-center gap-1.5">
-                <Check className="w-4 h-4" /> Profile updated successfully!
-              </p>
-            )}
-
-            <Button
-              type="submit"
-              className="w-full h-13 text-base font-black rounded-2xl shadow-md shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all"
-              isLoading={loading}
-            >
-              Save Changes
-            </Button>
-          </form>
-        </Card>
       </div>
     </AppShell>
   );

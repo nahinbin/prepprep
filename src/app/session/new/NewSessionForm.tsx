@@ -421,10 +421,10 @@ function NewSessionFormInner({
 
   return (
     <AppShell showBottomBar={false}>
-      <div className="min-h-screen p-3 sm:p-4 md:p-8 flex items-start justify-center py-4 md:py-8">
-        <Card className="w-full max-w-3xl p-4 sm:p-6 md:p-8 shadow-xl">
+      <div className="min-h-screen py-5 px-4 md:py-8 md:px-8 max-w-3xl mx-auto space-y-6">
+        <div className="w-full space-y-6">
           {/* Header */}
-          <div className="flex items-center justify-between mb-6 gap-3">
+          <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
               <BackButton />
               <div className="min-w-0">
@@ -479,7 +479,7 @@ function NewSessionFormInner({
                 }`}
               >
                 <Upload className="w-4 h-4 sm:w-5 sm:h-5 text-primary shrink-0" />
-                <span className="truncate">Import (JSON)</span>
+                <span className="truncate">Import</span>
               </button>
             </div>
           )}
@@ -515,7 +515,7 @@ function NewSessionFormInner({
 
                       {subjects.length === 0 ? (
                         <p className="text-base font-semibold text-muted-foreground py-4 text-center">
-                          No subjects with saved questions found. Switch to "Import (JSON)" to practice!
+                          No subjects with saved questions found. Switch to "Import" to practice!
                         </p>
                       ) : (
                         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 max-h-72 overflow-y-auto pr-1">
@@ -625,7 +625,7 @@ function NewSessionFormInner({
                           disabled={!bankTopicId}
                           className="w-full md:w-auto px-8 h-12 text-sm sm:text-base rounded-2xl font-black gap-1.5 shadow-md shadow-primary/20 hover:scale-105 active:scale-95 transition-all"
                         >
-                          Next: Timer & Count
+                          Next
                           <ChevronRight className="w-5 h-5" />
                         </Button>
                       </div>
@@ -951,7 +951,7 @@ function NewSessionFormInner({
                           disabled={!topicName.trim()}
                           className="w-full md:w-auto px-8 h-12 text-sm sm:text-base rounded-2xl font-black gap-1.5 shadow-md shadow-primary/20 hover:scale-105 active:scale-95 transition-all"
                         >
-                          Next: Timer
+                          Next
                           <ChevronRight className="w-5 h-5" />
                         </Button>
                       </div>
@@ -1052,7 +1052,7 @@ function NewSessionFormInner({
                       onClick={handleStep2Next}
                       className="px-8 h-14 text-sm sm:text-base rounded-2xl font-black gap-1.5 shadow-md shadow-primary/20 hover:scale-105 active:scale-95 transition-all"
                     >
-                      Next: Questions
+                      Next
                       <ChevronRight className="w-5 h-5" />
                     </Button>
                   </div>
@@ -1267,7 +1267,7 @@ function NewSessionFormInner({
               )}
             </div>
           )}
-        </Card>
+        </div>
       </div>
 
       {/* Random Count Selection Modal */}

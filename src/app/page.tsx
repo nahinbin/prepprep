@@ -87,40 +87,7 @@ export default async function Dashboard() {
           </div>
         </div>
 
-        {/* Level & Rank Progress Banner */}
-        <div className="p-5 sm:p-6 rounded-3xl bg-card border-2 border-border/80 shadow-lg relative overflow-hidden">
-          <div className="flex items-center justify-between gap-4 mb-3">
-            <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-xl bg-primary/15 border border-primary/30 flex items-center justify-center text-primary">
-                <Shield className="w-5 h-5" />
-              </div>
-              <div>
-                <span className={`text-base sm:text-lg font-black ${lvl.color}`}>{lvl.title}</span>
-                <span className="text-xs font-bold text-muted-foreground ml-2">Level {lvl.level}</span>
-              </div>
-            </div>
-            <span className="text-sm font-black text-primary tabular-nums">
-              {netXp} XP
-            </span>
-          </div>
 
-          {/* XP Progress Bar */}
-          <div className="w-full h-3.5 bg-muted rounded-full overflow-hidden p-0.5 border border-border/60">
-            <div
-              className="h-full bg-gradient-to-r from-primary to-purple-500 rounded-full xp-bar-glow transition-all duration-700"
-              style={{ width: `${lvl.progress}%` }}
-            />
-          </div>
-
-          <div className="flex items-center justify-between text-xs font-bold text-muted-foreground mt-2">
-            <span>Progress: {lvl.progress}%</span>
-            {lvl.xpEnd !== Infinity ? (
-              <span>{lvl.xpEnd - netXp} XP to Level {lvl.level + 1}</span>
-            ) : (
-              <span className="text-primary font-black">MAX LEVEL</span>
-            )}
-          </div>
-        </div>
 
         {/* Performance Stats Box: Accuracy & XP Lost displayed cleanly in the main screen */}
         <div>
