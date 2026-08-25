@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { DEFAULT_ECONOMY } from "@/lib/constants";
 import { saveSessionData } from "@/app/actions/session";
+import { isAnswerCorrect } from "@/lib/answerMatcher";
 import {
   ArrowLeft,
   ArrowRight,
@@ -328,7 +329,7 @@ export default function PlaySessionPage() {
 
     setSelectedOption(key);
 
-    const isCorrect = key === currentQuestion.answer;
+    const isCorrect = isAnswerCorrect(key, currentQuestion.answer, currentQuestion.options);
     const newAttempt: Attempt = {
       questionId: currentQuestion.id,
       question: currentQuestion.question,

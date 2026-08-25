@@ -31,6 +31,7 @@ import { BackButton } from "@/components/BackButton";
 import { GameHUD } from "@/components/GameHUD";
 import { sessionCostForCount, type EconomySettings } from "@/lib/constants";
 import { startImportedSessionCoins, startSessionCoins } from "@/app/actions/economy";
+import { normalizeCanonicalAnswer } from "@/lib/answerMatcher";
 
 const PROGRESS_KEY = "mcq_session_progress";
 
@@ -119,7 +120,6 @@ function NewSessionFormInner({
   const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set());
   const [showRandomModal, setShowRandomModal] = useState(false);
   const [randomCount, setRandomCount] = useState(10);
-  const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
   const [copiedFormat, setCopiedFormat] = useState(false);
   const [showFormatModal, setShowFormatModal] = useState(false);
 
@@ -201,7 +201,6 @@ function NewSessionFormInner({
 
   const validateJson = (text: string) => {
     setError("");
-    setDuplicateWarning(null);
     setParsedQuestions([]);
     setSelectedIndices(new Set());
     if (!text.trim()) return;
@@ -212,36 +211,26 @@ function NewSessionFormInner({
         throw new Error("Invalid format: Must contain a 'questions' array.");
       }
 
-      parsed.questions.forEach((q: any, i: number) => {
-        if (!q.question || !q.options || !q.answer) {
+      const formatted = parsed.questions.map((q: any, i: number) => {
+        if (!q.question || !q.options || (q.answer === undefined && q.correctAnswer === undefined)) {
           throw new Error(
             `Question ${i + 1} is missing required fields (question, options, answer).`
           );
         }
+
+        const rawAnswer = String(q.answer !== undefined ? q.answer : q.correctAnswer).trim();
+        const canonicalAnswer = normalizeCanonicalAnswer(rawAnswer, q.options);
+
+        return {
+          question: String(q.question).trim(),
+          options: q.options,
+          answer: canonicalAnswer || rawAnswer,
+        };
       });
 
-      // Check for duplicate questions in the session
-      const uniqueMap = new Map<string, any>();
-      let duplicateCount = 0;
-
-      for (const q of parsed.questions) {
-        const normalized = q.question.trim().toLowerCase();
-        if (uniqueMap.has(normalized)) {
-          duplicateCount++;
-        } else {
-          uniqueMap.set(normalized, q);
-        }
-      }
-
-      const deduplicated = Array.from(uniqueMap.values());
-      if (duplicateCount > 0) {
-        setDuplicateWarning(
-          `Removed ${duplicateCount} duplicate question(s) from the import to ensure uniqueness.`
-        );
-      }
-
-      setParsedQuestions(deduplicated);
-      setSelectedIndices(new Set(deduplicated.map((_: unknown, i: number) => i)));
+      // Keep 100% of questions exactly as imported without any deduplication removal
+      setParsedQuestions(formatted);
+      setSelectedIndices(new Set(formatted.map((_: unknown, i: number) => i)));
     } catch (err: any) {
       setError(err.message || "Invalid JSON format.");
     }
@@ -1161,11 +1150,7 @@ function NewSessionFormInner({
                     </div>
                   )}
 
-                  {duplicateWarning && (
-                    <p className="text-amber-500 text-xs font-semibold bg-amber-500/10 p-2.5 rounded-xl border border-amber-500/20">
-                      {duplicateWarning}
-                    </p>
-                  )}
+
 
                   {/* Question Preview & Selector (ONLY QUESTIONS, NO ANSWERS SHOWN) */}
                   {parsedQuestions.length > 0 && (
