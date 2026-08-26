@@ -281,7 +281,7 @@ export function SubjectManagement({ subjects }: { subjects: Subject[] }) {
               className="rounded-2xl h-11 px-4 text-xs sm:text-sm font-black shadow-md shadow-primary/20 hover:scale-105 active:scale-95 transition-all gap-1.5"
             >
               <Plus className="w-4 h-4" />
-              <span>Add Subject</span>
+              <span>Subject</span>
             </Button>
             <div className="md:hidden">
               <NavMenu />
