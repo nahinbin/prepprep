@@ -44,6 +44,7 @@ function RedoSessionContent() {
   } | null>(null);
   const attemptsRef = useRef(attempts);
   const autoNextTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isFinishingRef = useRef<boolean>(false);
 
   useEffect(() => {
     attemptsRef.current = attempts;
@@ -70,7 +71,7 @@ function RedoSessionContent() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
+      <div className="min-h-screen bg-background flex items-center justify-center font-bold">
         Loading mistakes...
       </div>
     );
@@ -127,16 +128,27 @@ function RedoSessionContent() {
   const progressPct = ((currentIndex + (hasAnswered ? 1 : 0)) / questions.length) * 100;
 
   const finishRedo = async (finalAttempts: RedoAttempt[]) => {
+    if (isFinishingRef.current) return;
+    isFinishingRef.current = true;
+    if (autoNextTimer.current) clearTimeout(autoNextTimer.current);
     setIsSaving(true);
-    const res = await saveRedoSessionData({ attempts: finalAttempts });
-    if (res.success) {
-      setSummary({
-        pointsRecovered: res.pointsRecovered || 0,
-        fullyCorrected: res.fullyCorrected || 0,
-        progressMade: res.progressMade || 0,
-      });
-    } else {
-      alert("Failed to save redo session.");
+
+    try {
+      const res = await saveRedoSessionData({ attempts: finalAttempts });
+      if (res.success) {
+        setSummary({
+          pointsRecovered: res.pointsRecovered || 0,
+          fullyCorrected: res.fullyCorrected || 0,
+          progressMade: res.progressMade || 0,
+        });
+      } else {
+        alert("Failed to save redo session.");
+        isFinishingRef.current = false;
+        setIsSaving(false);
+      }
+    } catch {
+      alert("An unexpected error occurred while saving redo session.");
+      isFinishingRef.current = false;
       setIsSaving(false);
     }
   };
@@ -151,6 +163,7 @@ function RedoSessionContent() {
   };
 
   const handleBack = () => {
+    if (isSaving || isFinishingRef.current) return;
     if (autoNextTimer.current) clearTimeout(autoNextTimer.current);
     if (currentIndex === 0) return;
     const prevIndex = currentIndex - 1;
@@ -160,6 +173,7 @@ function RedoSessionContent() {
   };
 
   const handleForward = () => {
+    if (isSaving || isFinishingRef.current) return;
     if (autoNextTimer.current) clearTimeout(autoNextTimer.current);
     if (currentIndex < questions.length - 1) {
       const nextIndex = currentIndex + 1;
@@ -172,7 +186,7 @@ function RedoSessionContent() {
   };
 
   const handleOptionSelect = (key: string) => {
-    if (hasAnswered || isSaving) return;
+    if (hasAnswered || isSaving || isFinishingRef.current) return;
 
     setSelectedOption(key);
     const isCorrect = key === currentQuestion.answer;
@@ -287,7 +301,7 @@ function RedoSessionContent() {
               <button
                 key={key}
                 onClick={() => handleOptionSelect(key)}
-                disabled={hasAnswered}
+                disabled={hasAnswered || isSaving}
                 className={`w-full text-left p-4 md:p-5 rounded-xl border-2 transition-all duration-200 flex justify-between items-center ${buttonStyle}`}
               >
                 <div className="flex items-center min-w-0">
@@ -307,6 +321,8 @@ function RedoSessionContent() {
             <Button
               size="lg"
               onClick={handleForward}
+              disabled={isSaving}
+              isLoading={isSaving}
               className="px-6 h-11 text-base rounded-xl font-bold gap-2"
             >
               {currentIndex < questions.length - 1 ? (
@@ -320,6 +336,15 @@ function RedoSessionContent() {
           </div>
         )}
       </Card>
+
+      {/* Full-screen Loading Overlay */}
+      {isSaving && (
+        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/70 backdrop-blur-md text-white p-4 text-center select-none animate-in fade-in duration-200">
+          <div className="w-14 h-14 border-4 border-primary border-t-transparent rounded-full animate-spin mb-4" />
+          <h2 className="text-xl sm:text-2xl font-black mb-1">Saving Redo Progress...</h2>
+          <p className="text-muted-foreground text-sm">Updating mistake records instantly</p>
+        </div>
+      )}
     </div>
   );
 }

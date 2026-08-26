@@ -33,6 +33,8 @@ export function AdminUsersClient({ users: initial }: { users: AdminUser[] }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [coins, setCoins] = useState(0);
+  const [positivePoints, setPositivePoints] = useState(0);
+  const [negativePoints, setNegativePoints] = useState(0);
   const [picture, setPicture] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -42,6 +44,8 @@ export function AdminUsersClient({ users: initial }: { users: AdminUser[] }) {
     setUsername(u.username);
     setPassword("");
     setCoins(u.coins);
+    setPositivePoints(u.positivePoints);
+    setNegativePoints(u.negativePoints);
     setPicture(u.profilePicture);
     setError("");
   };
@@ -62,6 +66,8 @@ export function AdminUsersClient({ users: initial }: { users: AdminUser[] }) {
       username,
       password: password || undefined,
       coins,
+      positivePoints,
+      negativePoints,
       profilePicture: picture,
     });
     setLoading(false);
@@ -72,7 +78,15 @@ export function AdminUsersClient({ users: initial }: { users: AdminUser[] }) {
     setUsers((prev) =>
       prev.map((u) =>
         u.id === editingId
-          ? { ...u, username, coins, profilePicture: picture }
+          ? {
+              ...u,
+              username,
+              coins,
+              positivePoints,
+              negativePoints,
+              netXp: positivePoints - negativePoints,
+              profilePicture: picture,
+            }
           : u
       )
     );
@@ -116,7 +130,7 @@ export function AdminUsersClient({ users: initial }: { users: AdminUser[] }) {
                     </p>
                   </div>
                   <div className="text-center px-3 py-2 bg-primary/10 border border-primary/20 rounded-xl">
-                    <p className="text-[10px] text-muted-foreground uppercase font-semibold">XP</p>
+                    <p className="text-[10px] text-muted-foreground uppercase font-semibold">Net XP</p>
                     <p className="text-lg font-black text-primary">{user.netXp}</p>
                   </div>
                   <div className="text-center px-3 py-2 bg-success/10 border border-success/20 rounded-xl">
@@ -145,9 +159,9 @@ export function AdminUsersClient({ users: initial }: { users: AdminUser[] }) {
       {editingId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/60" onClick={() => setEditingId(null)} />
-          <Card className="relative w-full max-w-md p-6 rounded-2xl space-y-4">
+          <Card className="relative w-full max-w-md p-6 rounded-2xl space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between">
-              <h3 className="text-lg font-bold">Edit user</h3>
+              <h3 className="text-lg font-bold">Edit User & Stats</h3>
               <button onClick={() => setEditingId(null)} className="p-2 rounded-xl hover:bg-muted">
                 <X className="w-5 h-5" />
               </button>
@@ -187,18 +201,46 @@ export function AdminUsersClient({ users: initial }: { users: AdminUser[] }) {
                 className="mt-1 h-11 rounded-xl"
               />
             </div>
-            <div>
-              <label className="text-xs font-semibold text-muted-foreground uppercase">Coins</label>
-              <Input
-                type="number"
-                min={0}
-                value={coins}
-                onChange={(e) => setCoins(Number(e.target.value))}
-                className="mt-1 h-11 rounded-xl"
-              />
+
+            <div className="grid grid-cols-3 gap-2">
+              <div>
+                <label className="text-xs font-semibold text-amber-500 uppercase">Coins</label>
+                <Input
+                  type="number"
+                  min={0}
+                  value={coins}
+                  onChange={(e) => setCoins(Number(e.target.value))}
+                  className="mt-1 h-11 rounded-xl font-bold text-amber-500"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-success uppercase">+XP (Earned)</label>
+                <Input
+                  type="number"
+                  min={0}
+                  value={positivePoints}
+                  onChange={(e) => setPositivePoints(Number(e.target.value))}
+                  className="mt-1 h-11 rounded-xl font-bold text-success"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-danger uppercase">-XP (Lost)</label>
+                <Input
+                  type="number"
+                  min={0}
+                  value={negativePoints}
+                  onChange={(e) => setNegativePoints(Number(e.target.value))}
+                  className="mt-1 h-11 rounded-xl font-bold text-danger"
+                />
+              </div>
             </div>
 
-            {error && <p className="text-sm text-danger">{error}</p>}
+            <div className="p-3 bg-muted/40 rounded-xl text-xs text-muted-foreground">
+              Net XP will be:{" "}
+              <span className="font-bold text-primary">{positivePoints - negativePoints} XP</span>
+            </div>
+
+            {error && <p className="text-sm text-danger font-semibold">{error}</p>}
 
             <Button className="w-full h-11 rounded-xl font-bold" onClick={save} isLoading={loading}>
               Save changes

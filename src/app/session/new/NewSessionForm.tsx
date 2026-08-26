@@ -195,7 +195,7 @@ function NewSessionFormInner({
         setJsonText(text);
         validateJson(text);
       };
-      reader.readAsText(file);
+      reader.readAsText(file, "UTF-8");
     }
   };
 
@@ -339,10 +339,12 @@ function NewSessionFormInner({
       return;
     }
 
+    const clientSessionToken = `sess_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
     sessionStorage.removeItem(PROGRESS_KEY);
     sessionStorage.setItem(
       "current_mcq_session",
       JSON.stringify({
+        clientSessionToken,
         questions: res.questions,
         isPractice,
         subjectName: subjectName.trim(),
@@ -385,10 +387,12 @@ function NewSessionFormInner({
       return;
     }
 
+    const clientSessionToken = `sess_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
     sessionStorage.removeItem(PROGRESS_KEY);
     sessionStorage.setItem(
       "current_mcq_session",
       JSON.stringify({
+        clientSessionToken,
         questions: res.questions,
         isPractice: true,
         subjectName: selectedBankSubject?.name,

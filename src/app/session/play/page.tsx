@@ -80,6 +80,8 @@ export default function PlaySessionPage() {
 
   const attemptsRef = useRef<Attempt[]>([]);
   const autoNextTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isFinishingRef = useRef<boolean>(false);
+  const sessionTokenRef = useRef<string>("");
 
   useEffect(() => {
     attemptsRef.current = attempts;
@@ -120,6 +122,9 @@ export default function PlaySessionPage() {
       const qs: Question[] = parsed.questions;
       setQuestions(qs);
       setIsPractice(!!parsed.isPractice);
+      sessionTokenRef.current =
+        parsed.clientSessionToken ||
+        `sess_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
       setSubjectInfo({
         subjectName: parsed.subjectName || parsed.settings?.subjectName || qs[0]?.subjectName,
         topicName: parsed.topicName || parsed.settings?.topicName || qs[0]?.topicName,
@@ -173,41 +178,54 @@ export default function PlaySessionPage() {
   const hasAnswered = selectedOption !== null || attempts[currentIndex] !== undefined || isTimedOut;
 
   const finishSession = async (finalAttempts: Attempt[]) => {
+    if (isFinishingRef.current) return;
+    isFinishingRef.current = true;
     clearTimers();
     setIsSaving(true);
+
     const correctAnswers = finalAttempts.filter((a) => a.isCorrect).length;
     const wrongAnswers = finalAttempts.filter((a) => !a.isCorrect).length;
     const positivePoints = isPractice ? 0 : correctAnswers * settings.xpPerCorrect;
     const negativePoints = isPractice ? 0 : wrongAnswers * settings.xpPerWrong;
     const netPoints = positivePoints - negativePoints;
 
-    const res = await saveSessionData({
-      totalQuestions: questions.length,
-      correctAnswers,
-      wrongAnswers,
-      positivePoints,
-      negativePoints,
-      netPoints,
-      isPractice,
-      subjectName: subjectInfo.subjectName,
-      topicName: subjectInfo.topicName,
-      subjectId: subjectInfo.subjectId,
-      topicId: subjectInfo.topicId,
-      attempts: finalAttempts,
-    });
+    try {
+      const res = await saveSessionData({
+        clientSessionToken: sessionTokenRef.current,
+        totalQuestions: questions.length,
+        correctAnswers,
+        wrongAnswers,
+        positivePoints,
+        negativePoints,
+        netPoints,
+        isPractice,
+        subjectName: subjectInfo.subjectName,
+        topicName: subjectInfo.topicName,
+        subjectId: subjectInfo.subjectId,
+        topicId: subjectInfo.topicId,
+        attempts: finalAttempts,
+      });
 
-    if (res.sessionId) {
-      sessionStorage.removeItem(SESSION_KEY);
-      sessionStorage.removeItem(PROGRESS_KEY);
-      router.push(`/session/result/${res.sessionId}`);
-    } else {
-      alert("Failed to save session.");
+      if (res.sessionId) {
+        sessionStorage.removeItem(SESSION_KEY);
+        sessionStorage.removeItem(PROGRESS_KEY);
+        router.push(`/session/result/${res.sessionId}`);
+      } else {
+        alert(res.error || "Failed to save session.");
+        isFinishingRef.current = false;
+        setIsSaving(false);
+        setShowFinishConfirm(false);
+      }
+    } catch {
+      alert("An unexpected error occurred while saving your session.");
+      isFinishingRef.current = false;
       setIsSaving(false);
       setShowFinishConfirm(false);
     }
   };
 
   const tryComplete = (finalAttempts: Attempt[]) => {
+    if (isFinishingRef.current) return;
     const skipped = questions.length - finalAttempts.length;
     if (skipped > 0) {
       setShowFinishConfirm(true);
@@ -228,7 +246,7 @@ export default function PlaySessionPage() {
 
   // Handle timeout expiration on the current question
   const handleTimeExpired = useCallback(() => {
-    if (isSaving || hasAnswered) return;
+    if (isSaving || isFinishingRef.current || hasAnswered) return;
     setIsTimedOut(true);
 
     const newAttempt: Attempt = {
@@ -248,7 +266,7 @@ export default function PlaySessionPage() {
     if (autoNextTimer.current) clearTimeout(autoNextTimer.current);
     autoNextTimer.current = setTimeout(() => {
       goNextOrFinish(nextAttempts);
-    }, AUTO_NEXT_MS + 200);
+    }, AUTO_NEXT_MS);
   }, [currentQuestion, hasAnswered, isPractice, isSaving, settings.xpPerWrong, goNextOrFinish]);
 
   // Start / stop timer whenever question or answered state changes
@@ -301,6 +319,7 @@ export default function PlaySessionPage() {
   }, [loaded, currentIndex, questions.length, settings.timerSeconds, attempts, handleTimeExpired]);
 
   const handleBack = () => {
+    if (isSaving || isFinishingRef.current) return;
     clearTimers();
     if (currentIndex === 0) return;
     const prevIndex = currentIndex - 1;
@@ -311,6 +330,7 @@ export default function PlaySessionPage() {
   };
 
   const handleForward = () => {
+    if (isSaving || isFinishingRef.current) return;
     clearTimers();
     if (currentIndex < questions.length - 1) {
       const nextIndex = currentIndex + 1;
@@ -324,7 +344,7 @@ export default function PlaySessionPage() {
   };
 
   const handleOptionSelect = (key: string) => {
-    if (hasAnswered || isSaving) return;
+    if (hasAnswered || isSaving || isFinishingRef.current) return;
     clearTimers();
 
     setSelectedOption(key);
@@ -351,7 +371,7 @@ export default function PlaySessionPage() {
   };
 
   const handleSkip = () => {
-    if (hasAnswered) return;
+    if (hasAnswered || isSaving || isFinishingRef.current) return;
     clearTimers();
     const nextSkipped = new Set(skippedIds);
     nextSkipped.add(currentQuestion.id);
@@ -390,7 +410,8 @@ export default function PlaySessionPage() {
             {currentIndex > 0 && (
               <button
                 onClick={handleBack}
-                className="flex items-center justify-center w-9 h-9 rounded-xl hover:bg-muted transition-colors active:scale-95 text-muted-foreground hover:text-foreground"
+                disabled={isSaving}
+                className="flex items-center justify-center w-9 h-9 rounded-xl hover:bg-muted transition-colors active:scale-95 text-muted-foreground hover:text-foreground disabled:opacity-50"
                 aria-label="Previous question"
                 title="Previous question"
               >
@@ -400,7 +421,8 @@ export default function PlaySessionPage() {
             {currentIndex < questions.length - 1 && hasAnswered && (
               <button
                 onClick={handleForward}
-                className="flex items-center justify-center w-9 h-9 rounded-xl hover:bg-muted transition-colors active:scale-95 text-muted-foreground hover:text-foreground"
+                disabled={isSaving}
+                className="flex items-center justify-center w-9 h-9 rounded-xl hover:bg-muted transition-colors active:scale-95 text-muted-foreground hover:text-foreground disabled:opacity-50"
                 aria-label="Next question"
                 title="Next question"
               >
@@ -516,7 +538,7 @@ export default function PlaySessionPage() {
               <button
                 key={key}
                 onClick={() => handleOptionSelect(key)}
-                disabled={hasAnswered}
+                disabled={hasAnswered || isSaving}
                 className={`w-full text-left p-3.5 sm:p-4 rounded-xl border-2 transition-all duration-150 flex justify-between items-center gap-3 ${buttonStyle}`}
               >
                 <div className="flex items-center min-w-0">
@@ -538,6 +560,7 @@ export default function PlaySessionPage() {
               size="lg"
               variant="outline"
               onClick={handleSkip}
+              disabled={isSaving}
               className="px-6 h-11 text-sm rounded-xl font-bold"
             >
               Skip
@@ -550,6 +573,8 @@ export default function PlaySessionPage() {
             <Button
               size="lg"
               onClick={handleForward}
+              disabled={isSaving}
+              isLoading={isSaving}
               className="px-6 h-11 text-sm rounded-xl font-bold gap-2"
             >
               {currentIndex < questions.length - 1 ? (
@@ -587,11 +612,21 @@ export default function PlaySessionPage() {
                 className="flex-1 rounded-xl h-11 font-bold"
                 onClick={() => finishSession(attempts)}
                 isLoading={isSaving}
+                disabled={isSaving}
               >
                 Finish
               </Button>
             </div>
           </Card>
+        </div>
+      )}
+
+      {/* Full-screen Loading Overlay during saving */}
+      {isSaving && (
+        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/70 backdrop-blur-md text-white p-4 text-center select-none animate-in fade-in duration-200">
+          <div className="w-14 h-14 border-4 border-primary border-t-transparent rounded-full animate-spin mb-4" />
+          <h2 className="text-xl sm:text-2xl font-black mb-1">Completing Session...</h2>
+          <p className="text-muted-foreground text-sm">Calculating rewards and stats instantly</p>
         </div>
       )}
     </div>

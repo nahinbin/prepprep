@@ -11,6 +11,8 @@ export async function adminUpdateUser(
     password?: string;
     profilePicture?: string | null;
     coins?: number;
+    positivePoints?: number;
+    negativePoints?: number;
   }
 ) {
   await requireAdmin();
@@ -23,6 +25,8 @@ export async function adminUpdateUser(
     password?: string;
     profilePicture?: string | null;
     coins?: number;
+    positivePoints?: number;
+    negativePoints?: number;
   } = {};
 
   if (data.username != null) {
@@ -51,8 +55,24 @@ export async function adminUpdateUser(
     update.coins = Math.floor(data.coins);
   }
 
+  if (data.positivePoints != null) {
+    if (!Number.isFinite(data.positivePoints) || data.positivePoints < 0) {
+      return { error: "Invalid positive XP amount." };
+    }
+    update.positivePoints = Math.floor(data.positivePoints);
+  }
+
+  if (data.negativePoints != null) {
+    if (!Number.isFinite(data.negativePoints) || data.negativePoints < 0) {
+      return { error: "Invalid negative XP amount." };
+    }
+    update.negativePoints = Math.floor(data.negativePoints);
+  }
+
   await prisma.user.update({ where: { id: userId }, data: update });
   revalidatePath("/admin/users");
+  revalidatePath("/admin/sessions");
+  revalidatePath("/");
   return { success: true };
 }
 

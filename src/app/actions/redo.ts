@@ -51,45 +51,55 @@ export async function saveRedoSessionData(data: {
   if (!user) return { error: "Not authenticated" };
 
   const settings = await getEconomySettings();
-  let pointsRecovered = 0;
-  let fullyCorrected = 0;
-  let progressMade = 0;
+  const mistakeIds = data.attempts.filter((a) => a.isCorrect).map((a) => a.mistakeId);
 
-  for (const attempt of data.attempts) {
-    if (!attempt.isCorrect) continue;
-
-    const mistake = await prisma.mistake.findUnique({
-      where: { id: attempt.mistakeId },
-    });
-    if (!mistake || mistake.isCorrected) continue;
-
-    if (mistake.correctCount >= 1) {
-      await prisma.mistake.update({
-        where: { id: attempt.mistakeId },
-        data: { isCorrected: true, correctCount: 2 },
-      });
-      fullyCorrected++;
-      // Practice mistakes never affect XP recovery
-      if (!mistake.fromPractice) {
-        pointsRecovered += settings.redoXpRecovery;
-      }
-    } else {
-      await prisma.mistake.update({
-        where: { id: attempt.mistakeId },
-        data: { correctCount: 1 },
-      });
-      progressMade++;
-    }
+  if (mistakeIds.length === 0) {
+    return { success: true, pointsRecovered: 0, fullyCorrected: 0, progressMade: 0 };
   }
 
-  if (pointsRecovered > 0) {
-    await prisma.user.update({
-      where: { id: user.id },
-      data: {
-        negativePoints: { decrement: pointsRecovered },
+  const result = await prisma.$transaction(async (tx) => {
+    const mistakes = await tx.mistake.findMany({
+      where: {
+        id: { in: mistakeIds },
+        userId: user.id,
+        isCorrected: false,
       },
     });
-  }
 
-  return { success: true, pointsRecovered, fullyCorrected, progressMade };
+    let pointsRecovered = 0;
+    let fullyCorrected = 0;
+    let progressMade = 0;
+
+    for (const mistake of mistakes) {
+      if (mistake.correctCount >= 1) {
+        await tx.mistake.update({
+          where: { id: mistake.id },
+          data: { isCorrected: true, correctCount: 2 },
+        });
+        fullyCorrected++;
+        if (!mistake.fromPractice) {
+          pointsRecovered += settings.redoXpRecovery;
+        }
+      } else {
+        await tx.mistake.update({
+          where: { id: mistake.id },
+          data: { correctCount: 1 },
+        });
+        progressMade++;
+      }
+    }
+
+    if (pointsRecovered > 0) {
+      await tx.user.update({
+        where: { id: user.id },
+        data: {
+          negativePoints: { decrement: pointsRecovered },
+        },
+      });
+    }
+
+    return { pointsRecovered, fullyCorrected, progressMade };
+  });
+
+  return { success: true, ...result };
 }

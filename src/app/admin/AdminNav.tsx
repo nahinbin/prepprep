@@ -6,6 +6,7 @@ import { LogOut } from "lucide-react";
 const tabs = [
   { href: "/admin", label: "Overview" },
   { href: "/admin/users", label: "Users" },
+  { href: "/admin/sessions", label: "Sessions" },
   { href: "/admin/rewards", label: "Rewards" },
   { href: "/admin/orders", label: "Orders" },
   { href: "/admin/transactions", label: "Transactions" },
