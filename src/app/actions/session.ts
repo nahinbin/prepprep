@@ -20,6 +20,22 @@ function cleanOldTokens() {
   }
 }
 
+// Cleanup attempt records older than 1 hour (ephemeral review period)
+export async function cleanupExpiredAttempts() {
+  try {
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    await prisma.attempt.deleteMany({
+      where: {
+        session: {
+          createdAt: { lt: oneHourAgo },
+        },
+      },
+    });
+  } catch (err) {
+    console.error("Error cleaning up expired attempts:", err);
+  }
+}
+
 export async function saveSessionData(data: {
   clientSessionToken?: string;
   totalQuestions: number;
@@ -84,7 +100,6 @@ export async function saveSessionData(data: {
           isPractice,
           attempts: {
             create: data.attempts.map((a) => ({
-              questionId: 0,
               question: a.question,
               options: a.options,
               correctAnswer: a.correctAnswer,
@@ -97,102 +112,29 @@ export async function saveSessionData(data: {
         },
       });
 
-      // 2. Handle mistakes in batch
+      // 2. Handle mistakes directly in Mistake table (WITHOUT creating Question records)
       const wrongAttempts = data.attempts.filter((a) => !a.isCorrect);
       if (wrongAttempts.length > 0) {
-        let targetSubjectId = data.subjectId;
-        let targetTopicId = data.topicId;
+        const subName = (data.subjectName || "General").trim();
+        const topName = (data.topicName || "General").trim();
 
-        if (!targetSubjectId || !targetTopicId) {
-          if (data.subjectName && data.topicName) {
-            const { subject, topic } = await findOrCreateSubjectTopic(
-              user.id,
-              data.subjectName,
-              data.topicName
-            );
-            targetSubjectId = subject.id;
-            targetTopicId = topic.id;
-          } else {
-            const firstSub = await tx.subject.findFirst({
-              where: { userId: user.id },
-              include: { topics: true },
-            });
-            if (firstSub && firstSub.topics.length > 0) {
-              targetSubjectId = firstSub.id;
-              targetTopicId = firstSub.topics[0].id;
-            } else {
-              const { subject, topic } = await findOrCreateSubjectTopic(
-                user.id,
-                data.subjectName || "General",
-                data.topicName || "General"
-              );
-              targetSubjectId = subject.id;
-              targetTopicId = topic.id;
-            }
-          }
-        }
+        const mistakeData = wrongAttempts.map((a) => ({
+          userId: user.id,
+          sessionId: session.id,
+          subjectName: subName,
+          topicName: topName,
+          question: a.question,
+          options: a.options,
+          correctAnswer: a.correctAnswer,
+          selectedAnswer: a.selectedAnswer,
+          correctCount: 0,
+          isCorrected: false,
+          fromPractice: isPractice,
+        }));
 
-        // Batch search for existing questions for this user
-        const wrongQTexts = Array.from(new Set(wrongAttempts.map((a) => a.question)));
-        const wrongQIds = Array.from(
-          new Set(wrongAttempts.map((a) => a.questionId).filter((id) => Boolean(id) && id !== "0"))
-        );
-
-        const existingQuestions = await tx.question.findMany({
-          where: {
-            subject: { userId: user.id },
-            OR: [
-              ...(wrongQIds.length > 0 ? [{ id: { in: wrongQIds } }] : []),
-              ...(wrongQTexts.length > 0 ? [{ question: { in: wrongQTexts } }] : []),
-            ],
-          },
+        await tx.mistake.createMany({
+          data: mistakeData,
         });
-
-        const questionMap = new Map<string, string>(); // question text/id -> db question id
-        for (const eq of existingQuestions) {
-          questionMap.set(eq.id, eq.id);
-          questionMap.set(eq.question, eq.id);
-        }
-
-        // Create any missing questions
-        const missingAttempts = wrongAttempts.filter(
-          (a) => !questionMap.has(a.questionId) && !questionMap.has(a.question)
-        );
-
-        for (const missing of missingAttempts) {
-          if (!questionMap.has(missing.question)) {
-            const createdQ = await tx.question.create({
-              data: {
-                subjectId: targetSubjectId!,
-                topicId: targetTopicId!,
-                question: missing.question,
-                options: missing.options,
-                correctAnswer: missing.correctAnswer,
-              },
-            });
-            questionMap.set(createdQ.id, createdQ.id);
-            questionMap.set(createdQ.question, createdQ.id);
-          }
-        }
-
-        // Batch create mistake records
-        const mistakeData = wrongAttempts.map((a) => {
-          const resolvedQId = questionMap.get(a.questionId) || questionMap.get(a.question)!;
-          return {
-            userId: user.id,
-            sessionId: session.id,
-            questionId: resolvedQId,
-            selectedAnswer: a.selectedAnswer,
-            correctAnswer: a.correctAnswer,
-            fromPractice: isPractice,
-          };
-        });
-
-        if (mistakeData.length > 0) {
-          await tx.mistake.createMany({
-            data: mistakeData,
-          });
-        }
       }
 
       // 3. Update user points & coins atomically
@@ -223,6 +165,9 @@ export async function saveSessionData(data: {
     if (token) {
       processedTokens.set(token, { sessionId: result.id, timestamp: Date.now() });
     }
+
+    // Prune attempts older than 1 hour in background
+    cleanupExpiredAttempts().catch(() => {});
 
     revalidatePath("/mistakes");
     revalidatePath("/session/new");

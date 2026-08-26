@@ -83,42 +83,11 @@ export async function deleteSubject(id: string) {
 
   const subject = await prisma.subject.findFirst({
     where: { id, userId: user.id },
-    include: {
-      questions: { select: { id: true } },
-    },
   });
   if (!subject) return { error: "Subject not found." };
 
-  const questionIds = subject.questions.map((q) => q.id);
-
-  await prisma.$transaction(async (tx) => {
-    if (questionIds.length > 0) {
-      // 1. Delete associated mistakes
-      await tx.mistake.deleteMany({
-        where: { questionId: { in: questionIds } },
-      });
-
-      // 2. Clear questionRefId on attempt records
-      await tx.attempt.updateMany({
-        where: { questionRefId: { in: questionIds } },
-        data: { questionRefId: null },
-      });
-
-      // 3. Delete questions
-      await tx.question.deleteMany({
-        where: { id: { in: questionIds } },
-      });
-    }
-
-    // 4. Delete topics
-    await tx.topic.deleteMany({
-      where: { subjectId: id },
-    });
-
-    // 5. Delete the subject itself
-    await tx.subject.delete({
-      where: { id },
-    });
+  await prisma.subject.delete({
+    where: { id },
   });
 
   revalidatePath("/subjects");
@@ -185,31 +154,12 @@ export async function deleteTopic(id: string) {
 
   const topic = await prisma.topic.findUnique({
     where: { id },
-    include: {
-      subject: true,
-      questions: { select: { id: true } },
-    },
+    include: { subject: true },
   });
   if (!topic || topic.subject.userId !== user.id) return { error: "Topic not found." };
 
-  const questionIds = topic.questions.map((q) => q.id);
-
-  await prisma.$transaction(async (tx) => {
-    if (questionIds.length > 0) {
-      await tx.mistake.deleteMany({
-        where: { questionId: { in: questionIds } },
-      });
-      await tx.attempt.updateMany({
-        where: { questionRefId: { in: questionIds } },
-        data: { questionRefId: null },
-      });
-      await tx.question.deleteMany({
-        where: { id: { in: questionIds } },
-      });
-    }
-    await tx.topic.delete({
-      where: { id },
-    });
+  await prisma.topic.delete({
+    where: { id },
   });
 
   revalidatePath("/subjects");
@@ -224,15 +174,10 @@ export async function getMistakeStatsBySubject() {
 
   const mistakes = await prisma.mistake.findMany({
     where: { userId: user.id, isCorrected: false },
-    include: {
-      question: {
-        select: {
-          subjectId: true,
-          topicId: true,
-          subject: { select: { id: true, name: true, userId: true } },
-          topic: { select: { id: true, name: true } },
-        },
-      },
+    select: {
+      id: true,
+      subjectName: true,
+      topicName: true,
     },
   });
 
@@ -247,24 +192,24 @@ export async function getMistakeStatsBySubject() {
   >();
 
   for (const m of mistakes) {
-    const sub = m.question.subject;
-    const top = m.question.topic;
+    const subName = m.subjectName || "General";
+    const topName = m.topicName || "General";
 
-    if (!subjectMap.has(sub.id)) {
-      subjectMap.set(sub.id, {
-        id: sub.id,
-        name: sub.name,
+    if (!subjectMap.has(subName)) {
+      subjectMap.set(subName, {
+        id: subName,
+        name: subName,
         count: 0,
         topics: new Map(),
       });
     }
-    const entry = subjectMap.get(sub.id)!;
+    const entry = subjectMap.get(subName)!;
     entry.count++;
 
-    if (!entry.topics.has(top.id)) {
-      entry.topics.set(top.id, { id: top.id, name: top.name, count: 0 });
+    if (!entry.topics.has(topName)) {
+      entry.topics.set(topName, { id: topName, name: topName, count: 0 });
     }
-    entry.topics.get(top.id)!.count++;
+    entry.topics.get(topName)!.count++;
   }
 
   return Array.from(subjectMap.values())

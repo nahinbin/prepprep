@@ -26,6 +26,10 @@ export default async function SessionReviewPage({
     redirect("/");
   }
 
+  const sessionAgeMs = Date.now() - session.createdAt.getTime();
+  const isExpired = sessionAgeMs > 60 * 60 * 1000 || session.attempts.length === 0;
+  const expiresAt = session.createdAt.getTime() + 60 * 60 * 1000;
+
   const formattedAttempts = session.attempts.map((att) => {
     let options: Record<string, string> = {};
     try {
@@ -58,6 +62,9 @@ export default async function SessionReviewPage({
         createdAt: session.createdAt.toISOString(),
       }}
       attempts={formattedAttempts}
+      isExpired={isExpired}
+      expiresAt={expiresAt}
     />
   );
 }
+

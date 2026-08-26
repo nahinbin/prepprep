@@ -42,9 +42,11 @@ type ReviewViewProps = {
     createdAt: string;
   };
   attempts: AttemptItem[];
+  isExpired?: boolean;
+  expiresAt?: number;
 };
 
-export function ReviewView({ session, attempts }: ReviewViewProps) {
+export function ReviewView({ session, attempts, isExpired = false, expiresAt }: ReviewViewProps) {
   const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set());
   const [filter, setFilter] = useState<"all" | "wrong" | "correct">("all");
   const [isSaving, setIsSaving] = useState(false);
@@ -206,8 +208,47 @@ export function ReviewView({ session, attempts }: ReviewViewProps) {
           </Card>
         </div>
 
-        {/* Action bar with filter and Save Selected */}
-        <Card className="p-4 rounded-2xl flex flex-wrap items-center justify-between gap-3 bg-card/60 backdrop-blur">
+        {/* 1-Hour Ephemeral Notice / Expired State */}
+        {isExpired || attempts.length === 0 ? (
+          <Card className="p-8 text-center rounded-3xl border-amber-500/30 bg-amber-500/5 space-y-4">
+            <div className="w-14 h-14 rounded-2xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center mx-auto text-amber-500">
+              <Timer className="w-7 h-7" />
+            </div>
+            <div className="space-y-1">
+              <h2 className="text-xl font-bold">Review Period Expired</h2>
+              <p className="text-sm text-muted-foreground max-w-md mx-auto">
+                Detailed question review is available for 1 hour after session completion to keep your account fast and database lightweight.
+              </p>
+              <p className="text-xs font-semibold text-primary mt-2">
+                All lifetime statistics, accuracy, XP, coins, and history remain permanently saved.
+              </p>
+            </div>
+            <div className="pt-2 flex flex-wrap items-center justify-center gap-3">
+              <Link href="/session/new">
+                <Button size="sm" className="rounded-xl font-bold">
+                  Start New Session
+                </Button>
+              </Link>
+              <Link href="/history">
+                <Button size="sm" variant="outline" className="rounded-xl font-bold">
+                  View History
+                </Button>
+              </Link>
+            </div>
+          </Card>
+        ) : (
+          <div className="p-3.5 rounded-2xl bg-primary/10 border border-primary/20 text-xs text-primary flex items-center gap-2.5 font-medium">
+            <Timer className="w-4 h-4 shrink-0 animate-pulse" />
+            <span>
+              <strong>1-Hour Review Active:</strong> Raw session questions are kept for 1 hour. Tap <strong>Save</strong> on any question below to permanently store it in your Question Bank.
+            </span>
+          </div>
+        )}
+
+        {/* Action bar with filter and Save Selected (only if active) */}
+        {!isExpired && attempts.length > 0 && (
+          <>
+            <Card className="p-4 rounded-2xl flex flex-wrap items-center justify-between gap-3 bg-card/60 backdrop-blur">
           {/* Filters */}
           <div className="flex items-center gap-1.5 bg-muted/50 p-1 rounded-xl">
             <button
@@ -411,6 +452,8 @@ export function ReviewView({ session, attempts }: ReviewViewProps) {
             })
           )}
         </div>
+          </>
+        )}
       </div>
     </AppShell>
   );

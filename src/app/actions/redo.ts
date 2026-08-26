@@ -3,66 +3,84 @@
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/app/actions/auth";
 import { getEconomySettings } from "@/app/actions/settings";
+import { revalidatePath } from "next/cache";
 
 export async function fetchMistakeQuestions(filters?: {
+  subjectName?: string;
+  topicName?: string;
   subjectId?: string;
   topicId?: string;
 }) {
   const user = await getSession();
   if (!user) return { error: "Not authenticated" };
 
-  const where: {
-    userId: string;
-    isCorrected: boolean;
-    question?: { subjectId?: string; topicId?: string };
-  } = {
+  const where: any = {
     userId: user.id,
     isCorrected: false,
   };
 
-  if (filters?.topicId) {
-    where.question = { topicId: filters.topicId };
-  } else if (filters?.subjectId) {
-    where.question = { subjectId: filters.subjectId };
+  if (filters?.topicName && filters.topicName !== "all") {
+    where.topicName = filters.topicName;
+  } else if (filters?.subjectName && filters.subjectName !== "all") {
+    where.subjectName = filters.subjectName;
+  } else if (filters?.topicId && filters.topicId !== "all") {
+    // Check if topicId is actually topic name or id
+    where.OR = [
+      { topicName: filters.topicId },
+      { subjectName: filters.topicId },
+    ];
+  } else if (filters?.subjectId && filters.subjectId !== "all") {
+    where.subjectName = filters.subjectId;
   }
 
   const mistakes = await prisma.mistake.findMany({
     where,
-    include: { question: true },
+    orderBy: { createdAt: "desc" },
   });
 
-  const questions = mistakes.map((m) => ({
-    mistakeId: m.id,
-    id: m.question.id,
-    question: m.question.question,
-    options: JSON.parse(m.question.options),
-    answer: m.question.correctAnswer,
-    correctCount: m.correctCount,
-    fromPractice: m.fromPractice,
-  }));
+  const questions = mistakes.map((m) => {
+    let parsedOptions: Record<string, string> = {};
+    try {
+      parsedOptions = typeof m.options === "string" ? JSON.parse(m.options) : m.options;
+    } catch {
+      parsedOptions = {};
+    }
+
+    return {
+      mistakeId: m.id,
+      id: m.id,
+      question: m.question,
+      options: parsedOptions,
+      answer: m.correctAnswer,
+      correctCount: m.correctCount,
+      fromPractice: m.fromPractice,
+      subjectName: m.subjectName,
+      topicName: m.topicName,
+    };
+  });
 
   return { questions };
 }
 
 export async function saveRedoSessionData(data: {
-  attempts: Array<{ mistakeId: string; isCorrect: boolean }>;
+  attempts: Array<{ mistakeId: string; selectedAnswer: string; isCorrect: boolean }>;
 }) {
   const user = await getSession();
   if (!user) return { error: "Not authenticated" };
 
-  const settings = await getEconomySettings();
-  const mistakeIds = data.attempts.filter((a) => a.isCorrect).map((a) => a.mistakeId);
-
-  if (mistakeIds.length === 0) {
+  if (!data.attempts || data.attempts.length === 0) {
     return { success: true, pointsRecovered: 0, fullyCorrected: 0, progressMade: 0 };
   }
+
+  const settings = await getEconomySettings();
+  const attemptMap = new Map(data.attempts.map((a) => [a.mistakeId, a]));
+  const mistakeIds = Array.from(attemptMap.keys());
 
   const result = await prisma.$transaction(async (tx) => {
     const mistakes = await tx.mistake.findMany({
       where: {
         id: { in: mistakeIds },
         userId: user.id,
-        isCorrected: false,
       },
     });
 
@@ -71,21 +89,33 @@ export async function saveRedoSessionData(data: {
     let progressMade = 0;
 
     for (const mistake of mistakes) {
-      if (mistake.correctCount >= 1) {
-        await tx.mistake.update({
-          where: { id: mistake.id },
-          data: { isCorrected: true, correctCount: 2 },
-        });
-        fullyCorrected++;
-        if (!mistake.fromPractice) {
-          pointsRecovered += settings.redoXpRecovery;
+      const att = attemptMap.get(mistake.id);
+      if (!att) continue;
+
+      if (att.isCorrect) {
+        if (mistake.correctCount >= 1) {
+          // Solved twice correctly (back-to-back): PERMANENTLY DELETE from database
+          await tx.mistake.delete({
+            where: { id: mistake.id },
+          });
+          fullyCorrected++;
+          if (!mistake.fromPractice) {
+            pointsRecovered += settings.redoXpRecovery;
+          }
+        } else {
+          // Solved once: need one more correct answer
+          await tx.mistake.update({
+            where: { id: mistake.id },
+            data: { correctCount: 1 },
+          });
+          progressMade++;
         }
       } else {
+        // Answered wrong: reset streak to 0
         await tx.mistake.update({
           where: { id: mistake.id },
-          data: { correctCount: 1 },
+          data: { correctCount: 0 },
         });
-        progressMade++;
       }
     }
 
@@ -101,5 +131,11 @@ export async function saveRedoSessionData(data: {
     return { pointsRecovered, fullyCorrected, progressMade };
   });
 
+  revalidatePath("/mistakes");
+  revalidatePath("/profile");
+  revalidatePath("/history");
+  revalidatePath("/");
+
   return { success: true, ...result };
 }
+

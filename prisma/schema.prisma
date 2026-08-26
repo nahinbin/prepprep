@@ -100,14 +100,12 @@ model Question {
   options       String
   correctAnswer String
   createdAt     DateTime  @default(now())
-  attempts      Attempt[]
-  mistakes      Mistake[]
 }
 
 model Session {
   id              String    @id @default(cuid())
   userId          String
-  user            User      @relation(fields: [userId], references: [id])
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt       DateTime  @default(now())
   totalQuestions  Int
   correctAnswers  Int
@@ -123,29 +121,29 @@ model Session {
 model Attempt {
   id             String    @id @default(cuid())
   sessionId      String
-  session        Session   @relation(fields: [sessionId], references: [id])
-  questionId     Int
-  questionRefId  String?
-  questionRef    Question? @relation(fields: [questionRefId], references: [id])
+  session        Session   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  questionId     Int       @default(0)
   question       String
   options        String
   correctAnswer  String
   selectedAnswer String
   isCorrect      Boolean
-  pointsGained   Int
-  pointsLost     Int
+  pointsGained   Int       @default(0)
+  pointsLost     Int       @default(0)
 }
 
 model Mistake {
   id             String   @id @default(cuid())
   userId         String
-  user           User     @relation(fields: [userId], references: [id])
-  sessionId      String
-  session        Session  @relation(fields: [sessionId], references: [id])
-  questionId     String
-  question       Question @relation(fields: [questionId], references: [id])
-  selectedAnswer String
-  correctAnswer  String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sessionId      String?
+  session        Session? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  subjectName    String   @default("General")
+  topicName      String   @default("General")
+  question       String   @default("")
+  options        String   @default("{}")
+  correctAnswer  String   @default("")
+  selectedAnswer String   @default("")
   correctCount   Int      @default(0)
   isCorrected    Boolean  @default(false)
   fromPractice   Boolean  @default(false)

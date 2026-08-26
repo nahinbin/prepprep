@@ -87,9 +87,7 @@ export async function getAdminSessionDetails(sessionId: string) {
       attempts: {
         orderBy: { id: "asc" },
       },
-      mistakes: {
-        include: { question: true },
-      },
+      mistakes: true,
     },
   });
 
@@ -218,7 +216,7 @@ export async function cleanUserDuplicateMistakes(userId: string): Promise<{
     const duplicateIdsToDelete: string[] = [];
 
     for (const m of allMistakes) {
-      const key = `${m.userId}_${m.questionId}_${m.fromPractice}`;
+      const key = `${m.userId}_${m.question}_${m.fromPractice}`;
       if (seen.has(key)) {
         duplicateIdsToDelete.push(m.id);
       } else {
