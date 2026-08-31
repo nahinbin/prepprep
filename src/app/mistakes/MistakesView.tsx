@@ -58,7 +58,7 @@ export function MistakesView({ subjects }: { subjects: SubjectStat[] }) {
             <div>
               <h1 className="text-2xl md:text-3xl font-black tracking-tight flex items-center gap-2">
                 <Swords className="w-7 h-7 text-danger shrink-0" />
-                Mistake Arena
+                Mistakes
               </h1>
               <p className="text-sm font-semibold text-muted-foreground mt-0.5">
                 Revisit & conquer your weak spots
