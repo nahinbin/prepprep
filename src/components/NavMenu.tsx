@@ -13,6 +13,9 @@ import {
   Gift,
   History,
   Database,
+  Settings,
+  Bell,
+  Users,
 } from "lucide-react";
 import { logout } from "@/app/actions/auth";
 import { Suspense } from "react";
@@ -27,6 +30,9 @@ const links = [
   { href: "/rewards", label: "Store", icon: Gift, match: (p: string) => p === "/rewards" },
   { href: "/subjects", label: "Subjects", icon: Layers, match: (p: string) => p === "/subjects" },
   { href: "/profile", label: "Profile", icon: User, match: (p: string) => p === "/profile" },
+  { href: "/friends", label: "Friends", icon: Users, match: (p: string) => p === "/friends" },
+  { href: "/notifications", label: "Notifications", icon: Bell, match: (p: string) => p === "/notifications" },
+  { href: "/settings", label: "Settings", icon: Settings, match: (p: string) => p === "/settings" },
 ];
 
 function NavLinks({
@@ -159,10 +165,10 @@ export function AppShell({
 }) {
   return (
     <ShellCtx.Provider value={{ mistakeCount }}>
-      <div className="min-h-screen bg-background game-bg">
+      <div className="min-h-[100dvh] bg-background game-bg flex flex-col">
         {showSidebar && <Sidebar />}
-        <div className={showSidebar ? "md:pl-[17.5rem]" : ""}>
-          <div className={showBottomBar ? "pb-28 md:pb-12" : "pb-12"}>{children}</div>
+        <div className={`flex-1 ${showSidebar ? "md:pl-[17.5rem]" : ""}`}>
+          <div className={showBottomBar ? "pb-24 md:pb-8" : ""}>{children}</div>
         </div>
         {showBottomBar && <BottomBar mistakeCount={mistakeCount} />}
       </div>
