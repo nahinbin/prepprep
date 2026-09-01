@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { User as UserType } from "@prisma/client";
-import { AppShell } from "@/components/NavMenu";
+import { AppShell, NavMenu } from "@/components/NavMenu";
 import { updateProfile } from "@/app/actions/user";
 import { User, Mail, Shield, Lock, Eye, ChevronRight, Check } from "lucide-react";
 import { BackButton } from "@/components/BackButton";
@@ -28,11 +28,14 @@ export function SettingsClient({ user }: { user: UserType }) {
   }
 
   return (
-    <AppShell>
-      <div className="max-w-2xl mx-auto px-4 py-6 md:py-10 space-y-6">
-        <div className="flex items-center gap-3">
-          <BackButton />
-          <h1 className="text-2xl md:text-3xl font-black tracking-tight text-foreground">Settings</h1>
+    <AppShell showBottomBar={false}>
+      <div className="w-full max-w-2xl mx-auto px-4 py-5 md:py-8 space-y-6">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <BackButton />
+            <h1 className="text-2xl md:text-3xl font-black tracking-tight text-foreground">Settings</h1>
+          </div>
+          <NavMenu />
         </div>
 
         <div className="rounded-3xl bg-card border-2 border-border shadow-sm overflow-hidden">

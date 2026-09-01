@@ -1,7 +1,8 @@
 import { getSession } from "@/app/actions/auth";
 import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
-import { AppShell } from "@/components/NavMenu";
+import { AppShell, NavMenu } from "@/components/NavMenu";
+import { BackButton } from "@/components/BackButton";
 import { Users, Check, X, UserPlus, Sparkles } from "lucide-react";
 import { respondToFriendRequest } from "@/app/actions/friends";
 import { calcAccuracy } from "@/lib/stats";
@@ -34,14 +35,17 @@ export default async function FriendsPage() {
   ];
 
   return (
-    <AppShell>
-      <div className="max-w-2xl mx-auto px-4 py-6 md:py-10 space-y-8">
-        <div>
-          <h1 className="text-3xl font-black tracking-tight text-primary flex items-center gap-3">
-            <Users className="w-8 h-8" />
-            Friends
-          </h1>
-          <p className="text-muted-foreground font-medium mt-1">Connect, compete, and learn together!</p>
+    <AppShell showBottomBar={false}>
+      <div className="w-full max-w-2xl mx-auto px-4 py-5 md:py-8 space-y-6">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <BackButton />
+            <h1 className="text-2xl md:text-3xl font-black tracking-tight text-foreground flex items-center gap-2.5">
+              <Users className="w-7 h-7 text-primary" />
+              Friends
+            </h1>
+          </div>
+          <NavMenu />
         </div>
 
         {/* Dynamic Friend Search */}

@@ -172,8 +172,8 @@ export function RewardsStore({ rewards, user }: { rewards: Reward[]; user: UserS
   };
 
   return (
-    <AppShell>
-      <div className="min-h-screen flex flex-col items-center py-5 px-4 md:py-8 md:px-8">
+    <AppShell showBottomBar={false}>
+      <div className="w-full flex flex-col items-center py-5 px-4 md:py-8 md:px-8">
         <div className="w-full max-w-4xl flex justify-between items-center mb-6 gap-3">
           <div className="flex items-center gap-2">
             <BackButton />

@@ -166,8 +166,8 @@ export function QuestionsClient({
   };
 
   return (
-    <AppShell>
-      <div className="min-h-screen p-4 md:p-8 max-w-5xl mx-auto space-y-6">
+    <AppShell showBottomBar={false}>
+      <div className="w-full p-4 md:p-8 max-w-5xl mx-auto space-y-6">
         {/* Header */}
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>

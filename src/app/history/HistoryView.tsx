@@ -42,8 +42,8 @@ export function HistoryView({
   ];
 
   return (
-    <AppShell>
-      <div className="min-h-screen p-4 md:p-8">
+    <AppShell showBottomBar={false}>
+      <div className="w-full p-4 md:p-8">
         <div className="w-full max-w-3xl mx-auto">
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-2">

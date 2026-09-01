@@ -1,7 +1,7 @@
 import { getSession } from "@/app/actions/auth";
 import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
-import { AppShell } from "@/components/NavMenu";
+import { AppShell, NavMenu } from "@/components/NavMenu";
 import { BackButton } from "@/components/BackButton";
 import { getLevelInfo } from "@/lib/levels";
 import {
@@ -63,11 +63,14 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
   const accuracy = calcAccuracy(targetUser.sessions);
 
   return (
-    <AppShell>
-      <div className="min-h-screen p-4 md:p-8 flex flex-col items-center max-w-2xl mx-auto space-y-6">
-        <div className="w-full flex items-center gap-2">
-          <BackButton />
-          <h1 className="text-xl md:text-2xl font-black tracking-tight">Player Profile</h1>
+    <AppShell showBottomBar={false}>
+      <div className="w-full p-4 md:p-8 flex flex-col items-center max-w-2xl mx-auto space-y-6">
+        <div className="w-full flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <BackButton />
+            <h1 className="text-xl md:text-2xl font-black tracking-tight">Player Profile</h1>
+          </div>
+          <NavMenu />
         </div>
 
         <div className="w-full text-center space-y-3">

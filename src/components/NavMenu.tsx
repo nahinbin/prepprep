@@ -25,6 +25,7 @@ const ShellCtx = createContext<{ mistakeCount: number }>({ mistakeCount: 0 });
 
 const links = [
   { href: "/", label: "Home", icon: Home, match: (p: string) => p === "/" },
+  { href: "/notifications", label: "Notifications", icon: Bell, match: (p: string) => p === "/notifications" },
   { href: "/questions", label: "Question Bank", icon: Database, match: (p: string) => p === "/questions" },
   { href: "/history", label: "History", icon: History, match: (p: string) => p === "/history" },
   { href: "/rewards", label: "Store", icon: Gift, match: (p: string) => p === "/rewards" },

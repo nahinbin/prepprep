@@ -94,7 +94,7 @@ export function ProfileForm({ user }: { user: any }) {
 
   return (
     <AppShell showBottomBar={false}>
-      <div className="min-h-screen p-4 md:p-8 flex flex-col items-center max-w-2xl mx-auto space-y-6">
+      <div className="w-full p-4 md:p-8 flex flex-col items-center max-w-2xl mx-auto space-y-6">
         {/* Header */}
         <div className="w-full flex items-center justify-between">
           <div className="flex items-center gap-2">

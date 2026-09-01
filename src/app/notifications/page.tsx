@@ -1,47 +1,51 @@
 import { getSession } from "@/app/actions/auth";
 import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
-import { AppShell } from "@/components/NavMenu";
-import { Bell, CheckCheck, Gift, Trophy, UserPlus, Flame } from "lucide-react";
-import { markAllNotificationsAsRead } from "@/app/actions/notifications";
+import { AppShell, NavMenu } from "@/components/NavMenu";
+import { BackButton } from "@/components/BackButton";
+import { Bell, Trophy, UserPlus, Flame, Check, X } from "lucide-react";
+import { respondToFriendRequest } from "@/app/actions/friends";
 import Link from "next/link";
 
 export default async function NotificationsPage() {
   const session = await getSession();
   if (!session) redirect("/login");
 
-  const notifications = await prisma.notification.findMany({
-    where: { userId: session.id },
-    orderBy: { createdAt: "desc" },
+  // Automatically mark all unread notifications as read when entering the page
+  await prisma.notification.updateMany({
+    where: { userId: session.id, isRead: false },
+    data: { isRead: true },
   });
 
-  const unreadCount = notifications.filter(n => !n.isRead).length;
+  const [notifications, pendingFriendships] = await Promise.all([
+    prisma.notification.findMany({
+      where: { userId: session.id },
+      orderBy: { createdAt: "desc" },
+    }),
+    prisma.friendship.findMany({
+      where: { friendId: session.id, status: "pending" },
+      include: { user: true },
+    }),
+  ]);
+
+  // Create a lookup map for pending friendships by sender username
+  const pendingByUsername = new Map(
+    pendingFriendships.map((f) => [f.user.username, f.id])
+  );
 
   return (
-    <AppShell>
-      <div className="max-w-2xl mx-auto px-4 py-6 md:py-10 space-y-6">
+    <AppShell showBottomBar={false}>
+      <div className="w-full max-w-2xl mx-auto px-4 py-5 md:py-8 space-y-6">
+        {/* Header */}
         <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-black tracking-tight text-primary flex items-center gap-3">
-              <Bell className="w-8 h-8" />
+          <div className="flex items-center gap-2">
+            <BackButton />
+            <h1 className="text-2xl md:text-3xl font-black tracking-tight flex items-center gap-2.5 text-foreground">
+              <Bell className="w-7 h-7 text-primary" />
               Notifications
             </h1>
-            <p className="text-muted-foreground font-medium mt-1">Stay updated with your friends and progress.</p>
           </div>
-          {unreadCount > 0 && (
-            <form action={async () => {
-              "use server";
-              await markAllNotificationsAsRead();
-            }}>
-              <button
-                type="submit"
-                className="px-4 py-2 bg-muted/50 hover:bg-muted text-sm font-bold text-foreground rounded-xl flex items-center gap-2 transition-colors border border-border/50"
-              >
-                <CheckCheck className="w-4 h-4" />
-                Mark all read
-              </button>
-            </form>
-          )}
+          <NavMenu />
         </div>
 
         <div className="space-y-3">
@@ -51,8 +55,8 @@ export default async function NotificationsPage() {
                 <Bell className="w-8 h-8" />
               </div>
               <p className="font-black text-xl text-foreground">You're all caught up!</p>
-              <p className="text-sm font-medium text-muted-foreground mt-1.5 max-w-sm">
-                No new notifications right now. We'll let you know when there's an update on your friend requests or milestones.
+              <p className="text-sm font-medium text-muted-foreground mt-1 max-w-sm">
+                No new notifications right now.
               </p>
             </div>
           ) : (
@@ -71,31 +75,72 @@ export default async function NotificationsPage() {
                 iconColor = "text-amber-500 bg-amber-500/10";
               }
 
-              const content = (
-                <div className={`p-4 rounded-3xl border-2 transition-all shadow-sm flex items-center gap-4 ${notif.isRead ? "bg-card border-border/40" : "bg-card/90 border-primary/40 shadow-primary/10"}`}>
-                  <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${iconColor}`}>
-                    <Icon className="w-6 h-6" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className={`text-base ${notif.isRead ? "font-semibold text-foreground/80" : "font-black text-foreground"}`}>
-                      {notif.content}
-                    </p>
-                    <p className="text-xs text-muted-foreground font-medium mt-0.5">
-                      {new Date(notif.createdAt).toLocaleDateString()}
-                    </p>
-                  </div>
-                  {!notif.isRead && (
-                    <div className="w-2.5 h-2.5 rounded-full bg-primary shrink-0 animate-pulse" />
-                  )}
-                </div>
-              );
+              // Check if there is an active pending friend request associated with this notification
+              let friendshipIdForAction: string | undefined;
+              if (notif.type === "FRIEND_REQUEST") {
+                // Find matching pending friendship
+                for (const [uname, fId] of pendingByUsername.entries()) {
+                  if (notif.content.includes(uname)) {
+                    friendshipIdForAction = fId;
+                    break;
+                  }
+                }
+              }
 
-              return notif.link ? (
-                <Link href={notif.link} key={notif.id} className="block active:scale-[0.99] transition-transform">
-                  {content}
-                </Link>
-              ) : (
-                <div key={notif.id}>{content}</div>
+              return (
+                <div
+                  key={notif.id}
+                  className="p-4 rounded-3xl border-2 bg-card border-border/60 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-all"
+                >
+                  <div className="flex items-center gap-3.5 flex-1 min-w-0">
+                    <div className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 ${iconColor}`}>
+                      <Icon className="w-5 h-5" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm sm:text-base font-bold text-foreground leading-snug">
+                        {notif.content}
+                      </p>
+                      <p className="text-xs text-muted-foreground font-medium mt-0.5">
+                        {new Date(notif.createdAt).toLocaleDateString()} · {new Date(notif.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Direct Actions if Friend Request is pending */}
+                  {friendshipIdForAction ? (
+                    <div className="flex items-center gap-2 self-end sm:self-center shrink-0 pt-1 sm:pt-0">
+                      <form action={async () => {
+                        "use server";
+                        await respondToFriendRequest(friendshipIdForAction!, false);
+                      }}>
+                        <button
+                          type="submit"
+                          className="px-3 py-1.5 rounded-xl bg-danger/10 text-danger text-xs font-bold flex items-center gap-1 hover:bg-danger/20 transition-colors"
+                        >
+                          <X className="w-3.5 h-3.5" /> Decline
+                        </button>
+                      </form>
+                      <form action={async () => {
+                        "use server";
+                        await respondToFriendRequest(friendshipIdForAction!, true);
+                      }}>
+                        <button
+                          type="submit"
+                          className="px-3.5 py-1.5 rounded-xl bg-success text-white text-xs font-black shadow-md shadow-success/20 flex items-center gap-1 hover:scale-105 active:scale-95 transition-all"
+                        >
+                          <Check className="w-3.5 h-3.5" /> Accept
+                        </button>
+                      </form>
+                    </div>
+                  ) : notif.link ? (
+                    <Link
+                      href={notif.link}
+                      className="text-xs font-bold text-primary hover:underline self-end sm:self-center shrink-0"
+                    >
+                      View
+                    </Link>
+                  ) : null}
+                </div>
               );
             })
           )}
