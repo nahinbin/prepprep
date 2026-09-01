@@ -18,12 +18,13 @@ import { Card } from "@/components/ui/Card";
 import { calcAccuracy } from "@/lib/stats";
 import { sendFriendRequest } from "@/app/actions/friends";
 
-export default async function PublicProfilePage({ params }: { params: { username: string } }) {
+export default async function PublicProfilePage({ params }: { params: Promise<{ username: string }> }) {
   const session = await getSession();
   if (!session) redirect("/login");
 
-  // Decode the username from the URL
-  const username = decodeURIComponent(params.username);
+  // Decode the username from the URL (params is async in Next.js App Router)
+  const { username: rawUsername } = await params;
+  const username = decodeURIComponent(rawUsername);
 
   // If visiting own profile, redirect to main profile page
   if (username === session.username) {

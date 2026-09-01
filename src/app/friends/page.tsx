@@ -54,22 +54,22 @@ export default async function FriendsPage() {
             <div className="space-y-3">
               {pendingRequests.map((req) => (
                 <div key={req.id} className="flex items-center justify-between p-4 rounded-3xl bg-muted/30 border-2 border-border/50 shadow-sm">
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-2xl bg-muted overflow-hidden">
+                  <Link href={`/profile/${req.user.username}`} className="flex items-center gap-3 flex-1 min-w-0 group">
+                    <div className="w-12 h-12 rounded-2xl bg-muted overflow-hidden shrink-0 group-hover:ring-2 group-hover:ring-primary/40 transition-all">
                       {req.user.profilePicture ? (
                         <img src={req.user.profilePicture} alt="" className="w-full h-full object-cover" />
                       ) : (
-                        <div className="w-full h-full flex items-center justify-center bg-primary/10 text-primary font-bold">
+                        <div className="w-full h-full flex items-center justify-center bg-primary/10 text-primary font-bold text-lg">
                           {req.user.username[0].toUpperCase()}
                         </div>
                       )}
                     </div>
-                    <div>
-                      <p className="font-bold text-foreground">{req.user.username}</p>
-                      <p className="text-xs text-muted-foreground font-medium">Wants to be your friend</p>
+                    <div className="min-w-0">
+                      <p className="font-bold text-foreground group-hover:text-primary transition-colors truncate">{req.user.username}</p>
+                      <p className="text-xs text-muted-foreground font-medium">Wants to be your friend · tap to view profile</p>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-2">
+                  </Link>
+                  <div className="flex items-center gap-2 shrink-0 ml-3">
                     <form action={async () => { "use server"; await respondToFriendRequest(req.id, false); }}>
                       <button className="w-10 h-10 rounded-xl bg-danger/10 text-danger flex items-center justify-center hover:bg-danger/20 transition-colors">
                         <X className="w-5 h-5" />
