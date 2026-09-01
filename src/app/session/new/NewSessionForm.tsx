@@ -32,6 +32,7 @@ import { GameHUD } from "@/components/GameHUD";
 import { sessionCostForCount, type EconomySettings } from "@/lib/constants";
 import { startImportedSessionCoins, startSessionCoins } from "@/app/actions/economy";
 import { normalizeCanonicalAnswer } from "@/lib/answerMatcher";
+import { unlockGameSounds } from "@/lib/gameSounds";
 
 const PROGRESS_KEY = "mcq_session_progress";
 
@@ -321,6 +322,7 @@ function NewSessionFormInner({
       return;
     }
 
+    unlockGameSounds();
     setLoading(true);
     setError("");
 
@@ -370,6 +372,7 @@ function NewSessionFormInner({
       return;
     }
 
+    unlockGameSounds();
     setLoading(true);
     setError("");
 

@@ -1,12 +1,18 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef, type RefObject } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { DEFAULT_ECONOMY } from "@/lib/constants";
 import { saveSessionData } from "@/app/actions/session";
 import { isAnswerCorrect } from "@/lib/answerMatcher";
+import {
+  playAnswerSound,
+  playSessionEndSound,
+  playWrongSound,
+  useGameSounds,
+} from "@/lib/gameSounds";
 import {
   ArrowLeft,
   ArrowRight,
@@ -83,23 +89,7 @@ export default function PlaySessionPage() {
   const isFinishingRef = useRef<boolean>(false);
   const sessionTokenRef = useRef<string>("");
 
-  // Sound refs
-  const correctSoundRef = useRef<HTMLAudioElement | null>(null);
-  const wrongSoundRef = useRef<HTMLAudioElement | null>(null);
-  const sessionEndSoundRef = useRef<HTMLAudioElement | null>(null);
-
-  useEffect(() => {
-    correctSoundRef.current = new Audio("/game_sounds/correct_answer.mp3");
-    wrongSoundRef.current = new Audio("/game_sounds/wrong_answers.mp3");
-    sessionEndSoundRef.current = new Audio("/game_sounds/sessionend.mp3");
-  }, []);
-
-  const playSound = (ref: RefObject<HTMLAudioElement | null>) => {
-    const audio = ref.current;
-    if (!audio) return;
-    audio.currentTime = 0;
-    audio.play().catch(() => {/* autoplay policy — silently ignore */});
-  };
+  useGameSounds();
 
   useEffect(() => {
     attemptsRef.current = attempts;
@@ -227,7 +217,7 @@ export default function PlaySessionPage() {
       if (res.sessionId) {
         sessionStorage.removeItem(SESSION_KEY);
         sessionStorage.removeItem(PROGRESS_KEY);
-        playSound(sessionEndSoundRef);
+        playSessionEndSound();
         router.push(`/session/result/${res.sessionId}`);
       } else {
         alert(res.error || "Failed to save session.");
@@ -267,7 +257,7 @@ export default function PlaySessionPage() {
   const handleTimeExpired = useCallback(() => {
     if (isSaving || isFinishingRef.current || hasAnswered) return;
     setIsTimedOut(true);
-    playSound(wrongSoundRef);
+    playWrongSound();
 
     const newAttempt: Attempt = {
       questionId: currentQuestion.id,
@@ -370,7 +360,7 @@ export default function PlaySessionPage() {
     setSelectedOption(key);
 
     const isCorrect = isAnswerCorrect(key, currentQuestion.answer, currentQuestion.options);
-    playSound(isCorrect ? correctSoundRef : wrongSoundRef);
+    playAnswerSound(isCorrect);
     const newAttempt: Attempt = {
       questionId: currentQuestion.id,
       question: currentQuestion.question,

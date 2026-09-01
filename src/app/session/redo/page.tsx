@@ -6,6 +6,11 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { CheckCircle2, XCircle, Zap, ArrowLeft, ArrowRight } from "lucide-react";
 import { fetchMistakeQuestions, saveRedoSessionData } from "@/app/actions/redo";
+import {
+  playAnswerSound,
+  playSessionEndSound,
+  useGameSounds,
+} from "@/lib/gameSounds";
 
 const AUTO_NEXT_MS = 900;
 
@@ -45,6 +50,8 @@ function RedoSessionContent() {
   const attemptsRef = useRef(attempts);
   const autoNextTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isFinishingRef = useRef<boolean>(false);
+
+  useGameSounds();
 
   useEffect(() => {
     attemptsRef.current = attempts;
@@ -136,6 +143,7 @@ function RedoSessionContent() {
     try {
       const res = await saveRedoSessionData({ attempts: finalAttempts });
       if (res.success) {
+        playSessionEndSound();
         setSummary({
           pointsRecovered: res.pointsRecovered || 0,
           fullyCorrected: res.fullyCorrected || 0,
@@ -190,6 +198,7 @@ function RedoSessionContent() {
 
     setSelectedOption(key);
     const isCorrect = key === currentQuestion.answer;
+    playAnswerSound(isCorrect);
     const nextAttempts = [
       ...attemptsRef.current,
       { mistakeId: currentQuestion.mistakeId, selectedAnswer: key, isCorrect },

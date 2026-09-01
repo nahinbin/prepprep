@@ -16,6 +16,7 @@ import {
   Flame,
   Trophy,
 } from "lucide-react";
+import { unlockGameSounds } from "@/lib/gameSounds";
 
 type TopicStat = {
   id: string;
@@ -45,6 +46,7 @@ export function MistakesView({ subjects }: { subjects: SubjectStat[] }) {
     const params = new URLSearchParams();
     if (topicId) params.set("topicId", topicId);
     else if (subjectId) params.set("subjectId", subjectId);
+    unlockGameSounds();
     router.push(`/session/redo?${params.toString()}`);
   };
 

@@ -21,6 +21,7 @@ import {
   Plus,
 } from "lucide-react";
 import { deleteQuestionFromBank, deleteMultipleQuestions } from "@/app/actions/questions";
+import { unlockGameSounds } from "@/lib/gameSounds";
 
 type SubjectItem = {
   id: string;
@@ -138,6 +139,8 @@ export function QuestionsClient({
       : filteredQuestions);
 
     if (pool.length === 0) return;
+
+    unlockGameSounds();
 
     const formatted = pool.map((q) => ({
       id: q.id,
