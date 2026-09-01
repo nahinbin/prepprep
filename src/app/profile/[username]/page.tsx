@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { calcAccuracy } from "@/lib/stats";
-import { sendFriendRequest } from "@/app/actions/friends";
+import { sendFriendRequest, removeFriend } from "@/app/actions/friends";
 
 export default async function PublicProfilePage({ params }: { params: Promise<{ username: string }> }) {
   const session = await getSession();
@@ -103,9 +103,24 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
 
           <div className="pt-2">
             {isFriend ? (
-              <div className="inline-flex items-center gap-2 px-4 py-2 bg-success/10 text-success font-black rounded-2xl border-2 border-success/20">
-                <Check className="w-5 h-5" />
-                Friends
+              <div className="inline-flex items-center gap-2">
+                <div className="inline-flex items-center gap-2 px-4 py-2 bg-success/10 text-success font-black rounded-2xl border-2 border-success/20">
+                  <Check className="w-5 h-5" />
+                  Friends
+                </div>
+                <form action={async () => {
+                  "use server";
+                  if (friendship) {
+                    await removeFriend(friendship.id);
+                  }
+                }}>
+                  <button
+                    type="submit"
+                    className="px-3.5 py-2 bg-danger/10 text-danger hover:bg-danger/20 font-bold rounded-2xl border-2 border-danger/20 text-sm transition-all"
+                  >
+                    Remove
+                  </button>
+                </form>
               </div>
             ) : hasPendingRequest ? (
               <div className="inline-flex items-center gap-2 px-4 py-2 bg-muted text-muted-foreground font-black rounded-2xl border-2 border-border/50">

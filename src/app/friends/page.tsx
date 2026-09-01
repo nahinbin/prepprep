@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { AppShell, NavMenu } from "@/components/NavMenu";
 import { BackButton } from "@/components/BackButton";
 import { Users, Check, X, UserPlus, Sparkles } from "lucide-react";
-import { respondToFriendRequest } from "@/app/actions/friends";
+import { respondToFriendRequest, removeFriend } from "@/app/actions/friends";
 import { calcAccuracy } from "@/lib/stats";
 import Link from "next/link";
 import { FriendSearch } from "./FriendSearch";
@@ -110,32 +110,50 @@ export default async function FriendsPage() {
                 const netXp = friend.positivePoints - friend.negativePoints;
                 const accuracy = calcAccuracy(friend.sessions || []);
                 return (
-                  <Link href={`/profile/${friend.username}`} key={friend.id} className="block group">
-                    <div className="p-4 rounded-3xl bg-card border-2 border-border/70 hover:border-primary/50 transition-all hover:scale-[1.02] shadow-sm flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 rounded-2xl bg-muted overflow-hidden shrink-0">
-                          {friend.profilePicture ? (
-                            <img src={friend.profilePicture} alt="" className="w-full h-full object-cover" />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center bg-primary/10 text-primary font-bold">
-                              {friend.username[0].toUpperCase()}
-                            </div>
-                          )}
-                        </div>
-                        <div className="truncate">
-                          <p className="font-bold text-foreground truncate">{friend.username}</p>
-                          <div className="flex items-center gap-2 mt-0.5">
-                            <span className="text-[10px] font-black uppercase bg-primary/10 text-primary px-1.5 py-0.5 rounded-md">
-                              {netXp} XP
-                            </span>
-                            <span className="text-[10px] font-black uppercase bg-success/10 text-success px-1.5 py-0.5 rounded-md">
-                              {accuracy}% Acc
-                            </span>
+                  <div
+                    key={friend.id}
+                    className="p-4 rounded-3xl bg-card border-2 border-border/70 hover:border-primary/50 transition-all shadow-sm flex items-center justify-between gap-3 group"
+                  >
+                    <Link href={`/profile/${friend.username}`} className="flex items-center gap-3 flex-1 min-w-0">
+                      <div className="w-12 h-12 rounded-2xl bg-muted overflow-hidden shrink-0 group-hover:ring-2 group-hover:ring-primary/40 transition-all">
+                        {friend.profilePicture ? (
+                          <img src={friend.profilePicture} alt="" className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center bg-primary/10 text-primary font-bold">
+                            {friend.username[0].toUpperCase()}
                           </div>
+                        )}
+                      </div>
+                      <div className="truncate">
+                        <p className="font-bold text-foreground group-hover:text-primary transition-colors truncate">{friend.username}</p>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <span className="text-[10px] font-black uppercase bg-primary/10 text-primary px-1.5 py-0.5 rounded-md">
+                            {netXp} XP
+                          </span>
+                          <span className="text-[10px] font-black uppercase bg-success/10 text-success px-1.5 py-0.5 rounded-md">
+                            {accuracy}% Acc
+                          </span>
                         </div>
                       </div>
-                    </div>
-                  </Link>
+                    </Link>
+
+                    <form
+                      action={async () => {
+                        "use server";
+                        await removeFriend(friend.friendshipId);
+                      }}
+                      className="shrink-0"
+                    >
+                      <button
+                        type="submit"
+                        title="Remove Friend"
+                        aria-label="Remove Friend"
+                        className="p-2 rounded-xl text-muted-foreground hover:text-danger hover:bg-danger/10 transition-colors"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </form>
+                  </div>
                 );
               })}
             </div>
