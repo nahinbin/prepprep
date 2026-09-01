@@ -2,10 +2,11 @@ import { getSession } from "@/app/actions/auth";
 import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import { AppShell } from "@/components/NavMenu";
-import { Search, UserPlus, Users, Check, X } from "lucide-react";
-import { sendFriendRequest, respondToFriendRequest } from "@/app/actions/friends";
+import { Users, Check, X, UserPlus, Sparkles } from "lucide-react";
+import { respondToFriendRequest } from "@/app/actions/friends";
 import { calcAccuracy } from "@/lib/stats";
 import Link from "next/link";
+import { FriendSearch } from "./FriendSearch";
 
 export default async function FriendsPage() {
   const session = await getSession();
@@ -43,31 +44,8 @@ export default async function FriendsPage() {
           <p className="text-muted-foreground font-medium mt-1">Connect, compete, and learn together!</p>
         </div>
 
-        {/* Add Friend Form */}
-        <div className="p-5 rounded-3xl bg-card border-2 border-border shadow-sm">
-          <form action={async (formData) => {
-            "use server";
-            const targetUsername = formData.get("username") as string;
-            await sendFriendRequest(targetUsername);
-          }} className="flex gap-2">
-            <div className="relative flex-1">
-              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-              <input
-                type="text"
-                name="username"
-                placeholder="Search by username..."
-                className="w-full pl-11 pr-4 py-3.5 rounded-2xl bg-muted/50 border-2 border-border/50 focus:border-primary focus:bg-background transition-all outline-none font-bold"
-                required
-              />
-            </div>
-            <button
-              type="submit"
-              className="px-6 rounded-2xl bg-primary text-primary-foreground font-black flex items-center justify-center hover:scale-[1.02] active:scale-[0.98] transition-transform shadow-lg shadow-primary/20"
-            >
-              <UserPlus className="w-5 h-5" />
-            </button>
-          </form>
-        </div>
+        {/* Dynamic Friend Search */}
+        <FriendSearch />
 
         {/* Pending Requests */}
         {pendingRequests.length > 0 && (
@@ -113,10 +91,14 @@ export default async function FriendsPage() {
         <div className="space-y-4">
           <h2 className="text-sm font-black uppercase tracking-wider text-muted-foreground pl-2">Your Friends</h2>
           {activeFriends.length === 0 ? (
-            <div className="p-8 rounded-3xl border-2 border-dashed border-border flex flex-col items-center justify-center text-center opacity-70">
-              <Users className="w-12 h-12 text-muted-foreground mb-3" />
-              <p className="font-bold text-lg">No friends yet</p>
-              <p className="text-sm text-muted-foreground mt-1">Search for a username above to start connecting!</p>
+            <div className="p-8 rounded-[2rem] bg-card border-2 border-dashed border-border flex flex-col items-center justify-center text-center">
+              <div className="w-16 h-16 rounded-2xl bg-primary/10 text-primary flex items-center justify-center mb-4">
+                <Sparkles className="w-8 h-8" />
+              </div>
+              <p className="font-black text-xl text-foreground">No friends yet</p>
+              <p className="text-sm font-medium text-muted-foreground mt-1.5 max-w-sm">
+                Use the search bar above to find your friends and start competing together on the leaderboards!
+              </p>
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

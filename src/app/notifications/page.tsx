@@ -46,10 +46,14 @@ export default async function NotificationsPage() {
 
         <div className="space-y-3">
           {notifications.length === 0 ? (
-            <div className="p-8 rounded-3xl border-2 border-dashed border-border flex flex-col items-center justify-center text-center opacity-70">
-              <Bell className="w-12 h-12 text-muted-foreground mb-3" />
-              <p className="font-bold text-lg">You're all caught up!</p>
-              <p className="text-sm text-muted-foreground mt-1">No new notifications right now.</p>
+            <div className="p-8 rounded-[2rem] bg-card border-2 border-dashed border-border flex flex-col items-center justify-center text-center mt-4">
+              <div className="w-16 h-16 rounded-2xl bg-primary/10 text-primary flex items-center justify-center mb-4">
+                <Bell className="w-8 h-8" />
+              </div>
+              <p className="font-black text-xl text-foreground">You're all caught up!</p>
+              <p className="text-sm font-medium text-muted-foreground mt-1.5 max-w-sm">
+                No new notifications right now. We'll let you know when there's an update on your friend requests or milestones.
+              </p>
             </div>
           ) : (
             notifications.map((notif) => {

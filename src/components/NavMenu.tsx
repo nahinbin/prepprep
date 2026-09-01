@@ -29,10 +29,7 @@ const links = [
   { href: "/history", label: "History", icon: History, match: (p: string) => p === "/history" },
   { href: "/rewards", label: "Store", icon: Gift, match: (p: string) => p === "/rewards" },
   { href: "/subjects", label: "Subjects", icon: Layers, match: (p: string) => p === "/subjects" },
-  { href: "/profile", label: "Profile", icon: User, match: (p: string) => p === "/profile" },
   { href: "/friends", label: "Friends", icon: Users, match: (p: string) => p === "/friends" },
-  { href: "/notifications", label: "Notifications", icon: Bell, match: (p: string) => p === "/notifications" },
-  { href: "/settings", label: "Settings", icon: Settings, match: (p: string) => p === "/settings" },
 ];
 
 function NavLinks({
@@ -86,16 +83,23 @@ export function Sidebar() {
         </Link>
       </div>
       <NavLinksSafe className="flex-1 px-3 space-y-1.5 overflow-y-auto" />
-      <div className="p-3 border-t border-white/5">
-        <form action={logout}>
+      <div className="p-3 border-t border-white/5 flex gap-2">
+        <form action={logout} className="flex-1">
           <button
             type="submit"
             className="flex items-center gap-3 w-full px-4 py-3.5 rounded-2xl text-base font-bold text-danger hover:bg-danger/10 transition-all"
           >
-            <LogOut className="w-5 h-5" />
+            <LogOut className="w-5 h-5 shrink-0" />
             Logout
           </button>
         </form>
+        <Link
+          href="/settings"
+          className="flex items-center justify-center w-14 rounded-2xl text-muted-foreground hover:text-foreground hover:bg-white/5 transition-all"
+          aria-label="Settings"
+        >
+          <Settings className="w-6 h-6" />
+        </Link>
       </div>
     </aside>
   );
@@ -121,8 +125,7 @@ export function NavMenu() {
             onClick={() => setOpen(false)}
           />
           <div className="absolute top-2 right-2 bottom-2 w-[min(20rem,calc(100vw-1rem))] bg-card border border-white/10 shadow-2xl rounded-[1.75rem] overflow-hidden flex flex-col">
-            <div className="flex items-center justify-between p-5">
-              <span className="font-black text-xl text-primary">Menu</span>
+            <div className="flex items-center justify-end p-5 pb-2">
               <button
                 onClick={() => setOpen(false)}
                 className="inline-flex items-center justify-center w-11 h-11 rounded-2xl hover:bg-muted transition-colors"
@@ -134,16 +137,24 @@ export function NavMenu() {
 
             <NavLinksSafe onNavigate={() => setOpen(false)} className="px-3 space-y-1.5 flex-1" />
 
-            <div className="p-3 border-t border-white/5">
-              <form action={logout}>
+            <div className="p-3 border-t border-white/5 flex gap-2">
+              <form action={logout} className="flex-1">
                 <button
                   type="submit"
                   className="flex items-center gap-3 w-full px-4 py-3.5 rounded-2xl text-base font-bold text-danger hover:bg-danger/10 transition-all"
                 >
-                  <LogOut className="w-5 h-5" />
+                  <LogOut className="w-5 h-5 shrink-0" />
                   Logout
                 </button>
               </form>
+              <Link
+                href="/settings"
+                onClick={() => setOpen(false)}
+                className="flex items-center justify-center w-14 rounded-2xl text-muted-foreground hover:text-foreground hover:bg-white/5 transition-all"
+                aria-label="Settings"
+              >
+                <Settings className="w-6 h-6" />
+              </Link>
             </div>
           </div>
         </div>

@@ -114,3 +114,24 @@ export async function removeFriend(friendshipId: string) {
   revalidatePath("/friends");
   return { success: true };
 }
+
+export async function searchFriend(query: string) {
+  const user = await getSession();
+  if (!user || !query) return { users: [] };
+
+  const users = await prisma.user.findMany({
+    where: {
+      username: { contains: query, mode: "insensitive" },
+      id: { not: user.id },
+    },
+    select: {
+      id: true,
+      username: true,
+      name: true,
+      profilePicture: true,
+    },
+    take: 5,
+  });
+
+  return { users };
+}

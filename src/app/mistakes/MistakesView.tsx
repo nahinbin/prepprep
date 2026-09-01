@@ -37,7 +37,7 @@ const DANGER_COLORS = [
   "from-pink-500/20 to-red-500/10 border-pink-500/30 hover:border-pink-500/60",
 ];
 
-export function MistakesView({ subjects }: { subjects: SubjectStat[] }) {
+export function MistakesView({ subjects, xpLost = 0 }: { subjects: SubjectStat[], xpLost?: number }) {
   const router = useRouter();
   const [selectedSubject, setSelectedSubject] = useState<SubjectStat | null>(null);
   const totalMistakes = subjects.reduce((acc, s) => acc + s.count, 0);
@@ -71,28 +71,41 @@ export function MistakesView({ subjects }: { subjects: SubjectStat[] }) {
         </div>
 
         {/* Total mistakes banner */}
-        {totalMistakes > 0 && (
+        {(totalMistakes > 0 || xpLost > 0) && (
           <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-danger/20 via-danger/10 to-background border-2 border-danger/30 p-5 mb-8 flex items-center justify-between gap-4">
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_80%_50%,hsl(var(--danger)/0.12),transparent_60%)]" />
-            <div className="relative z-10">
-              <p className="text-sm font-bold text-danger/80 uppercase tracking-widest mb-1">Total Mistakes</p>
-              <p className="text-5xl font-black text-danger leading-none">{totalMistakes}</p>
-              <p className="text-sm font-semibold text-muted-foreground mt-1">across {subjects.length} subject{subjects.length !== 1 ? "s" : ""}</p>
+            <div className="relative z-10 flex gap-6 sm:gap-10">
+              {totalMistakes > 0 && (
+                <div>
+                  <p className="text-sm font-bold text-danger/80 uppercase tracking-widest mb-1">Total Mistakes</p>
+                  <p className="text-4xl sm:text-5xl font-black text-danger leading-none">{totalMistakes}</p>
+                  <p className="text-xs sm:text-sm font-semibold text-muted-foreground mt-1">across {subjects.length} subject{subjects.length !== 1 ? "s" : ""}</p>
+                </div>
+              )}
+              {xpLost > 0 && (
+                <div>
+                  <p className="text-sm font-bold text-danger/80 uppercase tracking-widest mb-1">XP Lost</p>
+                  <p className="text-4xl sm:text-5xl font-black text-danger leading-none">-{xpLost}</p>
+                  <p className="text-xs sm:text-sm font-semibold text-muted-foreground mt-1">recover by fixing mistakes</p>
+                </div>
+              )}
             </div>
-            <div className="relative z-10 flex flex-col items-end gap-2">
-              <div className="w-16 h-16 rounded-3xl bg-danger/15 border-2 border-danger/30 flex items-center justify-center">
-                <Flame className="w-8 h-8 text-danger" />
+            {totalMistakes > 0 && (
+              <div className="relative z-10 flex flex-col items-end gap-2 shrink-0">
+                <div className="hidden sm:flex w-16 h-16 rounded-3xl bg-danger/15 border-2 border-danger/30 items-center justify-center">
+                  <Flame className="w-8 h-8 text-danger" />
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => startRedo()}
+                  className="rounded-2xl border-danger/40 text-danger hover:bg-danger/10 font-bold text-xs px-3 gap-1"
+                >
+                  <Play className="w-3.5 h-3.5 fill-current" />
+                  Redo All
+                </Button>
               </div>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => startRedo()}
-                className="rounded-2xl border-danger/40 text-danger hover:bg-danger/10 font-bold text-xs px-3 gap-1"
-              >
-                <Play className="w-3.5 h-3.5 fill-current" />
-                Redo All
-              </Button>
-            </div>
+            )}
           </div>
         )}
 
