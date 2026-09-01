@@ -23,7 +23,10 @@ export default async function SettingsPage() {
           <p className="text-muted-foreground font-medium mt-1">Manage your account and profile preferences.</p>
         </div>
 
-        <form action={updateProfile} className="space-y-6">
+        <form action={async (formData: FormData) => {
+          "use server";
+          await updateProfile(formData);
+        }} className="space-y-6">
           <div className="p-5 md:p-7 rounded-3xl bg-card border-2 border-border shadow-sm space-y-6">
             <h2 className="text-xl font-black text-foreground flex items-center gap-2">
               <User className="w-5 h-5 text-primary" />

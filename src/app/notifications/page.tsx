@@ -29,7 +29,10 @@ export default async function NotificationsPage() {
             <p className="text-muted-foreground font-medium mt-1">Stay updated with your friends and progress.</p>
           </div>
           {unreadCount > 0 && (
-            <form action={markAllNotificationsAsRead}>
+            <form action={async () => {
+              "use server";
+              await markAllNotificationsAsRead();
+            }}>
               <button
                 type="submit"
                 className="px-4 py-2 bg-muted/50 hover:bg-muted text-sm font-bold text-foreground rounded-xl flex items-center gap-2 transition-colors border border-border/50"
