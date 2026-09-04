@@ -125,7 +125,7 @@ export function NavMenu() {
             className="absolute inset-0 bg-black/65 backdrop-blur-sm"
             onClick={() => setOpen(false)}
           />
-          <div className="absolute top-2 right-2 bottom-2 w-[min(20rem,calc(100vw-1rem))] bg-card border border-white/10 shadow-2xl rounded-[1.75rem] overflow-hidden flex flex-col">
+          <div className="absolute top-[max(0.5rem,env(safe-area-inset-top))] right-2 bottom-[max(0.5rem,env(safe-area-inset-bottom))] w-[min(20rem,calc(100vw-1rem))] bg-card border border-white/10 shadow-2xl rounded-[1.75rem] overflow-hidden flex flex-col">
             <div className="flex items-center justify-end p-5 pb-2">
               <button
                 onClick={() => setOpen(false)}
@@ -177,7 +177,7 @@ export function AppShell({
 }) {
   return (
     <ShellCtx.Provider value={{ mistakeCount }}>
-      <div className="min-h-[100dvh] bg-background game-bg flex flex-col">
+      <div className="min-h-[100dvh] bg-background game-bg flex flex-col pt-safe md:pt-0">
         {showSidebar && <Sidebar />}
         <div className={`flex-1 ${showSidebar ? "md:pl-[17.5rem]" : ""}`}>
           <div className={showBottomBar ? "pb-24 md:pb-8" : ""}>{children}</div>

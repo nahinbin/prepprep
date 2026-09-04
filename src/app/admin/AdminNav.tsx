@@ -15,7 +15,7 @@ const tabs = [
 
 export function AdminNav({ active }: { active: string }) {
   return (
-    <div className="w-full max-w-5xl flex flex-col md:flex-row md:items-center justify-between gap-4 mb-10">
+    <div className="w-full max-w-5xl flex flex-col md:flex-row md:items-center justify-between gap-4 mb-10 pt-safe md:pt-0">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Admin</h1>
         <div className="flex flex-wrap gap-2 mt-4">

@@ -26,7 +26,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center p-4 bg-background game-bg">
+    <div className="flex min-h-screen items-center justify-center p-4 bg-background game-bg pt-safe pb-safe">
       <Card className="w-full max-w-md p-6 sm:p-8 rounded-3xl border-2 shadow-2xl backdrop-blur-md">
         <div className="mb-8 text-center space-y-2">
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-primary/15 border-2 border-primary/30 text-primary mb-2 shadow-inner">

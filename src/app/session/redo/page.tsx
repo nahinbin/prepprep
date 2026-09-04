@@ -218,7 +218,7 @@ function RedoSessionContent() {
   };
 
   return (
-    <div className="min-h-screen bg-background p-4 md:p-8 flex items-center justify-center">
+    <div className="min-h-screen bg-background p-4 md:p-8 pt-safe pb-safe flex items-center justify-center">
       <Card className="w-full max-w-3xl p-5 md:p-8 relative overflow-hidden border-primary/20">
         <div className="absolute top-0 left-0 h-1 bg-primary/30 w-full">
           <div
