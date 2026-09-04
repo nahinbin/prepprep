@@ -141,6 +141,22 @@ function RedoSessionContent() {
     if (autoNextTimer.current) clearTimeout(autoNextTimer.current);
     setIsSaving(true);
 
+    const showLocalSummary = () => {
+      playSessionEndSound();
+      const correctedCount = finalAttempts.filter((a) => a.isCorrect).length;
+      setSummary({
+        pointsRecovered: correctedCount * 5,
+        fullyCorrected: correctedCount,
+        progressMade: finalAttempts.length,
+      });
+      setIsSaving(false);
+    };
+
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      showLocalSummary();
+      return;
+    }
+
     try {
       const res = await saveRedoSessionData({ attempts: finalAttempts });
       if ("success" in res && res.success) {
@@ -158,14 +174,10 @@ function RedoSessionContent() {
           progressMade: res.progressMade || 0,
         });
       } else {
-        alert("Failed to save redo session.");
-        isFinishingRef.current = false;
-        setIsSaving(false);
+        showLocalSummary();
       }
     } catch {
-      alert("An unexpected error occurred while saving redo session.");
-      isFinishingRef.current = false;
-      setIsSaving(false);
+      showLocalSummary();
     }
   };
 

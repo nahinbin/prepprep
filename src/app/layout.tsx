@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { PwaRegister } from "@/components/PwaRegister";
 import { AppAudio } from "@/components/AppAudio";
+import { OfflineSyncManager } from "@/components/OfflineSyncManager";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -52,6 +53,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <body suppressHydrationWarning className="min-h-full flex flex-col overscroll-none">
         {children}
         <AppAudio />
+        <OfflineSyncManager />
         <PwaRegister />
       </body>
     </html>

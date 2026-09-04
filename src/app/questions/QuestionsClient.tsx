@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
+import { cachePracticeQuestions } from "@/lib/offlineStorage";
 import { AppShell, NavMenu } from "@/components/NavMenu";
 import {
   Database,
@@ -59,6 +60,23 @@ export function QuestionsClient({
   const [selectedIndices, setSelectedIndices] = useState<Set<string>>(new Set());
   const [isDeleting, setIsDeleting] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (initialQuestions && initialQuestions.length > 0) {
+      cachePracticeQuestions(
+        initialQuestions.map((q) => ({
+          id: q.id,
+          question: q.question,
+          options: q.options,
+          answer: q.answer,
+          subjectName: q.subjectName,
+          topicName: q.topicName,
+          subjectId: q.subjectId,
+          topicId: q.topicId,
+        }))
+      );
+    }
+  }, [initialQuestions]);
 
   const activeSubject = useMemo(
     () => initialSubjects.find((s) => s.id === selectedSubjectId),
