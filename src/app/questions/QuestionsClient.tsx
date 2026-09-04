@@ -21,7 +21,7 @@ import {
   Plus,
 } from "lucide-react";
 import { deleteQuestionFromBank, deleteMultipleQuestions } from "@/app/actions/questions";
-import { unlockGameSounds } from "@/lib/gameSounds";
+import { unlockGameSounds, playStartSessionSound } from "@/lib/gameSounds";
 
 type SubjectItem = {
   id: string;
@@ -141,6 +141,7 @@ export function QuestionsClient({
     if (pool.length === 0) return;
 
     unlockGameSounds();
+    playStartSessionSound();
 
     const formatted = pool.map((q) => ({
       id: q.id,
@@ -187,6 +188,7 @@ export function QuestionsClient({
             <Button
               size="sm"
               onClick={() => handleStartPractice()}
+              data-sfx="start"
               disabled={filteredQuestions.length === 0}
               className="rounded-xl font-bold gap-1.5 text-xs sm:text-sm shadow-md shadow-primary/20"
             >
@@ -379,6 +381,7 @@ export function QuestionsClient({
                     <div className="flex items-center gap-2">
                       <button
                         onClick={() => handleStartPractice([q])}
+                        data-sfx="start"
                         className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-bold bg-primary/15 hover:bg-primary/25 text-primary border border-primary/30 transition-colors"
                         title="Practice only this question"
                       >

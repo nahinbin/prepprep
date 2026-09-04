@@ -16,7 +16,7 @@ import {
   Flame,
   Trophy,
 } from "lucide-react";
-import { unlockGameSounds } from "@/lib/gameSounds";
+import { unlockGameSounds, playStartSessionSound } from "@/lib/gameSounds";
 
 type TopicStat = {
   id: string;
@@ -47,6 +47,7 @@ export function MistakesView({ subjects, xpLost = 0 }: { subjects: SubjectStat[]
     if (topicId) params.set("topicId", topicId);
     else if (subjectId) params.set("subjectId", subjectId);
     unlockGameSounds();
+    playStartSessionSound();
     router.push(`/session/redo?${params.toString()}`);
   };
 
@@ -99,6 +100,7 @@ export function MistakesView({ subjects, xpLost = 0 }: { subjects: SubjectStat[]
                   size="sm"
                   variant="outline"
                   onClick={() => startRedo()}
+                  data-sfx="start"
                   className="rounded-2xl border-danger/40 text-danger hover:bg-danger/10 font-bold text-xs px-3 gap-1"
                 >
                   <Play className="w-3.5 h-3.5 fill-current" />
@@ -191,6 +193,7 @@ export function MistakesView({ subjects, xpLost = 0 }: { subjects: SubjectStat[]
                 size="lg"
                 className="w-full h-14 text-base font-black rounded-2xl gap-2 shadow-md shadow-danger/20"
                 onClick={() => startRedo(selectedSubject.id)}
+                data-sfx="start"
               >
                 <Play className="w-5 h-5 fill-current" />
                 Redo All {selectedSubject.count} Mistakes
@@ -206,6 +209,7 @@ export function MistakesView({ subjects, xpLost = 0 }: { subjects: SubjectStat[]
                     <button
                       key={topic.id}
                       onClick={() => startRedo(undefined, topic.id)}
+                      data-sfx="start"
                       className="w-full flex items-center justify-between px-4 py-3.5 border-2 border-border rounded-2xl hover:border-danger/40 hover:bg-danger/5 transition-all text-left active:scale-[0.98] group"
                     >
                       <div className="flex items-center gap-3 min-w-0">

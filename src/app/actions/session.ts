@@ -5,6 +5,7 @@ import { getSession } from "@/app/actions/auth";
 import { getEconomySettings } from "@/app/actions/settings";
 import { findOrCreateSubjectTopic } from "@/app/actions/economy";
 import { revalidatePath } from "next/cache";
+import { didLevelUp } from "@/lib/levels";
 
 // In-memory idempotency cache for active/recent session saves
 const processedTokens = new Map<string, { sessionId: string; timestamp: number }>();
@@ -85,6 +86,12 @@ export async function saveSessionData(data: {
     const positiveXp = isPractice ? 0 : Math.max(0, data.positivePoints);
     const negativeXp = isPractice ? 0 : Math.max(0, data.negativePoints);
     const netXp = isPractice ? 0 : positiveXp - negativeXp;
+
+    const existingUser = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: { positivePoints: true, negativePoints: true },
+    });
+    const oldXp = (existingUser?.positivePoints ?? 0) - (existingUser?.negativePoints ?? 0);
 
     const result = await prisma.$transaction(async (tx) => {
       // 1. Create the session and attempts in one single query
@@ -176,7 +183,10 @@ export async function saveSessionData(data: {
     revalidatePath("/history");
     revalidatePath("/");
 
-    return { sessionId: result.id };
+    return {
+      sessionId: result.id,
+      ...(didLevelUp(oldXp, oldXp + netXp) ?? {}),
+    };
   } finally {
     if (token) {
       activeTokens.delete(token);

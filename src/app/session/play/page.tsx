@@ -11,6 +11,7 @@ import {
   playAnswerSound,
   playSessionEndSound,
   playWrongSound,
+  stashPendingLevelUp,
   useGameSounds,
 } from "@/lib/gameSounds";
 import {
@@ -214,13 +215,20 @@ export default function PlaySessionPage() {
         attempts: finalAttempts,
       });
 
-      if (res.sessionId) {
+      if ("sessionId" in res && res.sessionId) {
         sessionStorage.removeItem(SESSION_KEY);
         sessionStorage.removeItem(PROGRESS_KEY);
+        if (res.toLevel && res.fromLevel && res.toLevel > res.fromLevel) {
+          stashPendingLevelUp({
+            fromLevel: res.fromLevel,
+            toLevel: res.toLevel,
+            title: res.title ?? "",
+          });
+        }
         playSessionEndSound();
         router.push(`/session/result/${res.sessionId}`);
       } else {
-        alert(res.error || "Failed to save session.");
+        alert(("error" in res && res.error) || "Failed to save session.");
         isFinishingRef.current = false;
         setIsSaving(false);
         setShowFinishConfirm(false);
@@ -549,6 +557,7 @@ export default function PlaySessionPage() {
               <button
                 key={key}
                 onClick={() => handleOptionSelect(key)}
+                data-sfx="none"
                 disabled={hasAnswered || isSaving}
                 className={`w-full text-left p-3.5 sm:p-4 rounded-xl border-2 transition-all duration-150 flex justify-between items-center gap-3 ${buttonStyle}`}
               >

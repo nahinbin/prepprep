@@ -32,7 +32,7 @@ import { GameHUD } from "@/components/GameHUD";
 import { sessionCostForCount, type EconomySettings } from "@/lib/constants";
 import { startImportedSessionCoins, startSessionCoins } from "@/app/actions/economy";
 import { normalizeCanonicalAnswer } from "@/lib/answerMatcher";
-import { unlockGameSounds } from "@/lib/gameSounds";
+import { unlockGameSounds, playStartSessionSound, playCoinSpendSound } from "@/lib/gameSounds";
 
 const PROGRESS_KEY = "mcq_session_progress";
 
@@ -323,6 +323,7 @@ function NewSessionFormInner({
     }
 
     unlockGameSounds();
+    playStartSessionSound();
     setLoading(true);
     setError("");
 
@@ -359,6 +360,7 @@ function NewSessionFormInner({
         },
       })
     );
+    if (!isPractice && cost > 0) playCoinSpendSound();
     router.push("/session/play");
   };
 
@@ -373,6 +375,7 @@ function NewSessionFormInner({
     }
 
     unlockGameSounds();
+    playStartSessionSound();
     setLoading(true);
     setError("");
 
@@ -752,6 +755,7 @@ function NewSessionFormInner({
                     <Button
                       size="lg"
                       onClick={handleStartFromBank}
+                      data-sfx="start"
                       disabled={bankAvailableQuestions === 0 || loading}
                       isLoading={loading}
                       className="flex-1 max-w-xs h-14 text-base sm:text-lg font-black rounded-2xl shadow-lg shadow-primary/30 hover:scale-[1.02] active:scale-[0.98] transition-all"
@@ -1247,6 +1251,7 @@ function NewSessionFormInner({
                     <Button
                       size="lg"
                       onClick={handleStartImported}
+                      data-sfx="start"
                       disabled={count === 0 || !canAfford || loading}
                       isLoading={loading}
                       className="flex-1 max-w-xs h-14 text-base sm:text-lg font-black rounded-2xl shadow-lg shadow-primary/30 hover:scale-[1.02] active:scale-[0.98] transition-all"

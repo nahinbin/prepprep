@@ -10,6 +10,7 @@ import { BackButton } from "@/components/BackButton";
 import { GameHUD } from "@/components/GameHUD";
 import { Coins, Gift, X, Check, ChevronRight, Lock } from "lucide-react";
 import { purchaseReward } from "@/app/actions/rewards";
+import { playConfirmSound, playCoinSpendSound } from "@/lib/gameSounds";
 
 type Reward = {
   id: string;
@@ -74,6 +75,7 @@ function SlideToConfirm({
     setDragging(false);
     if (offset > maxRef.current * 0.85) {
       setOffset(maxRef.current);
+      playConfirmSound();
       onConfirm();
       setTimeout(() => setOffset(0), 400);
     } else {
@@ -84,6 +86,7 @@ function SlideToConfirm({
   return (
     <div
       ref={trackRef}
+      data-sfx="confirm"
       className={`relative h-14 rounded-2xl overflow-hidden select-none touch-none border ${
         disabled ? "opacity-50 border-border bg-muted" : "border-primary/30 bg-primary/10"
       }`}
@@ -165,6 +168,7 @@ export function RewardsStore({ rewards, user }: { rewards: Reward[]; user: UserS
     }
     setSuccess(true);
     setLoading(false);
+    playCoinSpendSound();
     setTimeout(() => {
       close();
       router.refresh();

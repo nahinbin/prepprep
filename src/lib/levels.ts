@@ -121,3 +121,10 @@ export function getLevelInfo(netXp: number): LevelInfo {
     xpForLevel: xpForLevel ?? Infinity,
   };
 }
+
+export function didLevelUp(oldXp: number, newXp: number) {
+  const from = getLevelInfo(oldXp);
+  const to = getLevelInfo(newXp);
+  if (to.level <= from.level) return null;
+  return { fromLevel: from.level, toLevel: to.level, title: to.title };
+}

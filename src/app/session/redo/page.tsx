@@ -9,6 +9,7 @@ import { fetchMistakeQuestions, saveRedoSessionData } from "@/app/actions/redo";
 import {
   playAnswerSound,
   playSessionEndSound,
+  stashPendingLevelUp,
   useGameSounds,
 } from "@/lib/gameSounds";
 
@@ -142,7 +143,14 @@ function RedoSessionContent() {
 
     try {
       const res = await saveRedoSessionData({ attempts: finalAttempts });
-      if (res.success) {
+      if ("success" in res && res.success) {
+        if (res.toLevel && res.fromLevel && res.toLevel > res.fromLevel) {
+          stashPendingLevelUp({
+            fromLevel: res.fromLevel,
+            toLevel: res.toLevel,
+            title: res.title ?? "",
+          });
+        }
         playSessionEndSound();
         setSummary({
           pointsRecovered: res.pointsRecovered || 0,
@@ -310,6 +318,7 @@ function RedoSessionContent() {
               <button
                 key={key}
                 onClick={() => handleOptionSelect(key)}
+                data-sfx="none"
                 disabled={hasAnswered || isSaving}
                 className={`w-full text-left p-4 md:p-5 rounded-xl border-2 transition-all duration-200 flex justify-between items-center ${buttonStyle}`}
               >

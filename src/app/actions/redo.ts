@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { getSession } from "@/app/actions/auth";
 import { getEconomySettings } from "@/app/actions/settings";
 import { revalidatePath } from "next/cache";
+import { didLevelUp } from "@/lib/levels";
 
 export async function fetchMistakeQuestions(filters?: {
   subjectName?: string;
@@ -77,6 +78,12 @@ export async function saveRedoSessionData(data: {
   const mistakeIds = Array.from(attemptMap.keys());
 
   const result = await prisma.$transaction(async (tx) => {
+    const currentUser = await tx.user.findUnique({
+      where: { id: user.id },
+      select: { positivePoints: true, negativePoints: true },
+    });
+    const oldXp = (currentUser?.positivePoints ?? 0) - (currentUser?.negativePoints ?? 0);
+
     const mistakes = await tx.mistake.findMany({
       where: {
         id: { in: mistakeIds },
@@ -128,7 +135,7 @@ export async function saveRedoSessionData(data: {
       });
     }
 
-    return { pointsRecovered, fullyCorrected, progressMade };
+    return { pointsRecovered, fullyCorrected, progressMade, oldXp };
   });
 
   revalidatePath("/mistakes");
@@ -136,6 +143,9 @@ export async function saveRedoSessionData(data: {
   revalidatePath("/history");
   revalidatePath("/");
 
-  return { success: true, ...result };
+  const { oldXp, ...stats } = result;
+  const level = didLevelUp(oldXp, oldXp + stats.pointsRecovered);
+
+  return { success: true, ...stats, ...(level ?? {}) };
 }
 
