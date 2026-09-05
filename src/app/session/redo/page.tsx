@@ -141,22 +141,6 @@ function RedoSessionContent() {
     if (autoNextTimer.current) clearTimeout(autoNextTimer.current);
     setIsSaving(true);
 
-    const showLocalSummary = () => {
-      playSessionEndSound();
-      const correctedCount = finalAttempts.filter((a) => a.isCorrect).length;
-      setSummary({
-        pointsRecovered: correctedCount * 5,
-        fullyCorrected: correctedCount,
-        progressMade: finalAttempts.length,
-      });
-      setIsSaving(false);
-    };
-
-    if (typeof navigator !== "undefined" && !navigator.onLine) {
-      showLocalSummary();
-      return;
-    }
-
     try {
       const res = await saveRedoSessionData({ attempts: finalAttempts });
       if ("success" in res && res.success) {
@@ -174,10 +158,14 @@ function RedoSessionContent() {
           progressMade: res.progressMade || 0,
         });
       } else {
-        showLocalSummary();
+        alert("Failed to save redo session.");
+        isFinishingRef.current = false;
+        setIsSaving(false);
       }
     } catch {
-      showLocalSummary();
+      alert("An unexpected error occurred while saving redo session.");
+      isFinishingRef.current = false;
+      setIsSaving(false);
     }
   };
 
@@ -230,7 +218,7 @@ function RedoSessionContent() {
   };
 
   return (
-    <div className="min-h-screen bg-background p-4 md:p-8 pt-safe pb-safe flex items-center justify-center">
+    <div className="min-h-screen bg-background p-4 md:p-8 flex items-center justify-center">
       <Card className="w-full max-w-3xl p-5 md:p-8 relative overflow-hidden border-primary/20">
         <div className="absolute top-0 left-0 h-1 bg-primary/30 w-full">
           <div

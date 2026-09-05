@@ -23,10 +23,7 @@ import {
   Zap,
   Timer,
   AlertCircle,
-  WifiOff,
-  Trophy,
 } from "lucide-react";
-import { enqueueOfflineSession } from "@/lib/offlineStorage";
 
 const SESSION_KEY = "current_mcq_session";
 const PROGRESS_KEY = "mcq_session_progress";
@@ -74,15 +71,6 @@ export default function PlaySessionPage() {
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [showFinishConfirm, setShowFinishConfirm] = useState(false);
-  const [offlineResult, setOfflineResult] = useState<{
-    correctAnswers: number;
-    wrongAnswers: number;
-    positivePoints: number;
-    negativePoints: number;
-    netPoints: number;
-    totalQuestions: number;
-    isPractice: boolean;
-  } | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [isPractice, setIsPractice] = useState(false);
   const [settings, setSettings] = useState<SessionSettings>({
@@ -210,44 +198,6 @@ export default function PlaySessionPage() {
     const negativePoints = isPractice ? 0 : wrongAnswers * settings.xpPerWrong;
     const netPoints = positivePoints - negativePoints;
 
-    const saveOfflineAndShowResult = () => {
-      enqueueOfflineSession({
-        clientSessionToken: sessionTokenRef.current,
-        totalQuestions: questions.length,
-        correctAnswers,
-        wrongAnswers,
-        positivePoints,
-        negativePoints,
-        netPoints,
-        isPractice,
-        subjectName: subjectInfo.subjectName,
-        topicName: subjectInfo.topicName,
-        subjectId: subjectInfo.subjectId,
-        topicId: subjectInfo.topicId,
-        attempts: finalAttempts,
-        createdAt: Date.now(),
-      });
-      sessionStorage.removeItem(SESSION_KEY);
-      sessionStorage.removeItem(PROGRESS_KEY);
-      playSessionEndSound();
-      setOfflineResult({
-        correctAnswers,
-        wrongAnswers,
-        positivePoints,
-        negativePoints,
-        netPoints,
-        totalQuestions: questions.length,
-        isPractice,
-      });
-      setIsSaving(false);
-      setShowFinishConfirm(false);
-    };
-
-    if (typeof navigator !== "undefined" && !navigator.onLine) {
-      saveOfflineAndShowResult();
-      return;
-    }
-
     try {
       const res = await saveSessionData({
         clientSessionToken: sessionTokenRef.current,
@@ -278,12 +228,16 @@ export default function PlaySessionPage() {
         playSessionEndSound();
         router.push(`/session/result/${res.sessionId}`);
       } else {
-        // In case of error response or network drop, safely store offline
-        saveOfflineAndShowResult();
+        alert(("error" in res && res.error) || "Failed to save session.");
+        isFinishingRef.current = false;
+        setIsSaving(false);
+        setShowFinishConfirm(false);
       }
     } catch {
-      // If network fails, queue to offline storage so progress is never lost
-      saveOfflineAndShowResult();
+      alert("An unexpected error occurred while saving your session.");
+      isFinishingRef.current = false;
+      setIsSaving(false);
+      setShowFinishConfirm(false);
     }
   };
 
@@ -444,62 +398,6 @@ export default function PlaySessionPage() {
     goNextOrFinish(attempts);
   };
 
-  if (offlineResult) {
-    return (
-      <div className="min-h-screen bg-background p-4 md:p-8 pt-safe pb-safe flex items-center justify-center">
-        <Card className="w-full max-w-md p-6 sm:p-8 text-center space-y-6 rounded-3xl border-2 border-primary/20 shadow-2xl">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-3xl bg-primary/15 border border-primary/30 text-primary mx-auto shadow-inner">
-            <Trophy className="w-8 h-8" />
-          </div>
-
-          <div className="space-y-1.5">
-            <h1 className="text-2xl sm:text-3xl font-black tracking-tight">Session Complete</h1>
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-400 text-xs font-bold">
-              <WifiOff className="w-3.5 h-3.5" />
-              <span>Saved Offline • Will sync once online</span>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="p-3.5 rounded-2xl bg-card border border-border">
-              <p className="text-xs font-bold text-muted-foreground uppercase">Correct</p>
-              <p className="text-2xl font-black text-success tabular-nums">{offlineResult.correctAnswers}</p>
-            </div>
-            <div className="p-3.5 rounded-2xl bg-card border border-border">
-              <p className="text-xs font-bold text-muted-foreground uppercase">Wrong</p>
-              <p className="text-2xl font-black text-danger tabular-nums">{offlineResult.wrongAnswers}</p>
-            </div>
-          </div>
-
-          {!offlineResult.isPractice && (
-            <div className="p-4 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-between">
-              <span className="text-sm font-bold text-muted-foreground">Estimated Net XP</span>
-              <span className="text-xl font-black text-primary tabular-nums">
-                {offlineResult.netPoints >= 0 ? `+${offlineResult.netPoints}` : offlineResult.netPoints} XP
-              </span>
-            </div>
-          )}
-
-          <div className="flex flex-col gap-2 pt-2">
-            <Button
-              onClick={() => router.push("/")}
-              className="w-full h-12 rounded-2xl font-black text-base shadow-lg shadow-primary/20"
-            >
-              Return Home
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => router.push("/session/new?mode=practice")}
-              className="w-full h-12 rounded-2xl font-bold"
-            >
-              Practice More
-            </Button>
-          </div>
-        </Card>
-      </div>
-    );
-  }
-
   if (!loaded || questions.length === 0) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center font-bold">
@@ -514,7 +412,7 @@ export default function PlaySessionPage() {
   const timerEnabled = (settings.timerSeconds ?? 0) > 0;
 
   return (
-    <div className="min-h-screen bg-background p-3 sm:p-4 md:p-8 pt-safe pb-safe flex items-center justify-center">
+    <div className="min-h-screen bg-background p-3 sm:p-4 md:p-8 flex items-center justify-center">
       <Card className="w-full max-w-3xl p-4 sm:p-6 md:p-8 relative overflow-hidden">
         {/* Top Progress Bar */}
         <div className="absolute top-0 left-0 h-1.5 bg-primary/25 w-full">

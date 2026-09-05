@@ -127,15 +127,17 @@ export function OfflineSyncManager() {
   }
 
   return (
-    <div className="fixed top-2 left-1/2 -translate-x-1/2 z-50 pointer-events-none w-full max-w-sm px-4">
+    <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-40 pointer-events-none w-auto max-w-sm px-3 pb-[env(safe-area-inset-bottom)]">
       {/* Offline Status Badge */}
       {!isOnline && (
-        <div className="flex items-center justify-center gap-2 px-3.5 py-1.5 rounded-full bg-amber-500/90 text-amber-950 backdrop-blur-md shadow-lg shadow-amber-500/20 text-xs font-black animate-fade-in pointer-events-auto mx-auto border border-amber-400">
-          <WifiOff className="w-3.5 h-3.5 shrink-0" />
-          <span>Offline Mode • Progress will sync automatically</span>
+        <div className="flex items-center justify-center gap-2 px-3 py-1.5 rounded-full bg-card/95 text-foreground backdrop-blur-xl shadow-2xl shadow-black/60 text-xs font-bold animate-fade-in pointer-events-auto mx-auto border border-amber-500/40">
+          <WifiOff className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+          <span className="text-muted-foreground">
+            Offline <span className="text-foreground font-extrabold">• Auto-sync enabled</span>
+          </span>
           {pendingCount > 0 && (
-            <span className="bg-amber-950/20 px-1.5 py-0.5 rounded-md text-[10px]">
-              {pendingCount} queued
+            <span className="bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded-md text-[10px] font-black">
+              {pendingCount}
             </span>
           )}
         </div>
@@ -143,7 +145,7 @@ export function OfflineSyncManager() {
 
       {/* Syncing Progress Badge */}
       {isOnline && syncing && (
-        <div className="flex items-center justify-center gap-2 px-3.5 py-1.5 rounded-full bg-primary/90 text-white backdrop-blur-md shadow-lg shadow-primary/25 text-xs font-black animate-fade-in pointer-events-auto mx-auto border border-primary/40">
+        <div className="flex items-center justify-center gap-2 px-3 py-1.5 rounded-full bg-primary/95 text-white backdrop-blur-xl shadow-2xl shadow-primary/30 text-xs font-black animate-fade-in pointer-events-auto mx-auto border border-primary/50">
           <CloudSync className="w-3.5 h-3.5 shrink-0 animate-spin" />
           <span>Syncing offline sessions...</span>
         </div>
@@ -151,7 +153,7 @@ export function OfflineSyncManager() {
 
       {/* Sync Success Badge */}
       {isOnline && syncNotice && !syncing && (
-        <div className="flex items-center justify-center gap-2 px-3.5 py-1.5 rounded-full bg-success/90 text-white backdrop-blur-md shadow-lg shadow-success/25 text-xs font-black animate-fade-in pointer-events-auto mx-auto border border-success/40">
+        <div className="flex items-center justify-center gap-2 px-3.5 py-1.5 rounded-full bg-success/95 text-white backdrop-blur-xl shadow-2xl shadow-success/30 text-xs font-black animate-fade-in pointer-events-auto mx-auto border border-success/50">
           <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
           <span>{syncNotice}</span>
         </div>

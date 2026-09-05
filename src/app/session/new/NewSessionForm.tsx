@@ -28,7 +28,6 @@ import {
 } from "lucide-react";
 import { NavMenu, AppShell } from "@/components/NavMenu";
 import { BackButton } from "@/components/BackButton";
-import { cachePracticeQuestions, getCachedPracticeQuestions } from "@/lib/offlineStorage";
 import { GameHUD } from "@/components/GameHUD";
 import { sessionCostForCount, type EconomySettings } from "@/lib/constants";
 import { startImportedSessionCoins, startSessionCoins } from "@/app/actions/economy";
@@ -380,35 +379,6 @@ function NewSessionFormInner({
     setLoading(true);
     setError("");
 
-    // Check if user is offline and has cached practice questions
-    if (typeof navigator !== "undefined" && !navigator.onLine) {
-      const cached = getCachedPracticeQuestions();
-      if (cached.length > 0) {
-        const count = Math.min(bankCount || 10, cached.length);
-        const shuffled = [...cached].sort(() => 0.5 - Math.random()).slice(0, count);
-        const clientSessionToken = `sess_off_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-        sessionStorage.removeItem(PROGRESS_KEY);
-        sessionStorage.setItem(
-          "current_mcq_session",
-          JSON.stringify({
-            clientSessionToken,
-            questions: shuffled,
-            isPractice: true,
-            subjectName: "Offline Practice",
-            topicName: "Cached Bank",
-            settings: {
-              xpPerCorrect: 10,
-              xpPerWrong: 5,
-              coinsPerCorrect: 1,
-              timerSeconds: effectiveTimerSeconds,
-            },
-          })
-        );
-        router.push("/session/play");
-        return;
-      }
-    }
-
     const res = await startSessionCoins({
       subjectId: bankSubjectId,
       topicId: bankTopicId,
@@ -421,11 +391,6 @@ function NewSessionFormInner({
       setError(res.error);
       setLoading(false);
       return;
-    }
-
-    // Cache questions pool for future offline usage
-    if (res.questions && res.questions.length > 0) {
-      cachePracticeQuestions(res.questions);
     }
 
     const clientSessionToken = `sess_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
