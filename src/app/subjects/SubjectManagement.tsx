@@ -27,6 +27,7 @@ import {
   updateTopic,
   deleteTopic,
 } from "@/app/actions/subjects";
+import { playConfirmSound } from "@/lib/gameSounds";
 
 type Topic = {
   id: string;
@@ -77,6 +78,7 @@ function SlideToConfirm({
       setSliderPosition(1);
       setConfirmed(true);
       setIsDragging(false);
+      playConfirmSound();
       onConfirm();
     }
   };
@@ -117,6 +119,7 @@ function SlideToConfirm({
   return (
     <div
       ref={containerRef}
+      data-sfx="confirm"
       onTouchMove={handleTouchMove}
       onTouchEnd={handleEnd}
       className={`relative h-15 w-full rounded-2xl overflow-hidden select-none border-2 transition-all flex items-center ${

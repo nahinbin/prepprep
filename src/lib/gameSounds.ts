@@ -4,16 +4,18 @@ import { useEffect } from "react";
 
 /**
  * =============================================================================
- *  EDIT SOUND FILES HERE
- *  Put the audio files in:  public/game_sounds/
- *  Write the filename only (example: "tap.mp3").
- *  Missing files are skipped — the app will not crash.
+ *  GAME SOUNDS & MUSIC CONFIGURATION
+ *  - Put your audio files into:  public/game_sounds/
+ *  - Edit the filenames below.
+ *  - If an audio file is missing or still loading, an instant synthetic
+ *    audio chime plays so the app is NEVER silent.
  * =============================================================================
  */
 
-/** Public folder for every clip */
+/** Base public directory for sound assets */
 export const GAME_SOUNDS_DIR = "/game_sounds";
 
+/** Core Sound Effects — change filenames as you wish */
 export const GAME_SOUND_FILES = {
   correct: "correct_answer.mp3",
   wrong: "wrong_answers.mp3",
@@ -26,15 +28,19 @@ export const GAME_SOUND_FILES = {
 } as const;
 
 /**
- * Home background playlist. Add as many filenames as you want.
- * They shuffle through the full list, then reshuffle.
- * The same track never plays twice in a row across loop boundaries.
+ * Home background playlist.
+ * Add as many filenames as you want (e.g. "home_music_1.mp3", "track2.mp3", etc.)
+ * The playlist engine shuffles through the full list before repeating,
+ * and ensures the first track of a new cycle never duplicates the last track!
  */
 export const HOME_MUSIC_FILES = [
   "home_music_1.mp3",
+  "home_music_2.mp3",
+  "home_music_3.mp3",
 ];
 
-export const HOME_MUSIC_VOLUME = 0.38;
+/** Background music volume level (0.0 to 1.0) */
+export const HOME_MUSIC_VOLUME = 0.35;
 
 export type GameSoundKind = keyof typeof GAME_SOUND_FILES;
 
@@ -89,13 +95,17 @@ type AudioSessionLike = {
   type: string;
 };
 
-function configureMixWithCalls() {
+/**
+ * Configure audio session on iOS/Android WebKit.
+ * Setting `type = "playback"` prevents the OS from muting web audio
+ * during phone/VoIP calls and bypasses the physical hardware silent switch!
+ */
+function configureAudioSession() {
   if (typeof navigator === "undefined") return;
   try {
-    const session = (navigator as Navigator & { audioSession?: AudioSessionLike }).audioSession;
-    if (session) {
-      // Mix with phone/VoIP audio instead of pausing as exclusive media playback.
-      session.type = "ambient";
+    const nav = navigator as Navigator & { audioSession?: AudioSessionLike };
+    if (nav.audioSession) {
+      nav.audioSession.type = "playback";
     }
   } catch {
     /* not supported */
@@ -117,7 +127,7 @@ let musicListenersBound = false;
 
 function getAudioContext(): AudioContext | null {
   if (typeof window === "undefined") return null;
-  configureMixWithCalls();
+  configureAudioSession();
   if (!audioCtx) {
     const Ctx =
       window.AudioContext ||
@@ -128,8 +138,98 @@ function getAudioContext(): AudioContext | null {
     } catch {
       audioCtx = new Ctx();
     }
+
+    // Attach state listener to resume audio if interrupted by incoming/outgoing phone calls
+    try {
+      audioCtx.onstatechange = () => {
+        if (audioCtx && (audioCtx.state === "suspended" || (audioCtx.state as string) === "interrupted")) {
+          // Attempt auto-resume
+          void audioCtx.resume().catch(() => {});
+        }
+      };
+    } catch {
+      /* ignore */
+    }
   }
   return audioCtx;
+}
+
+/**
+ * Synthetic Web Audio Fallback:
+ * If an audio file is missing (404), fails to decode, or is still downloading,
+ * this generates an instant, pleasing chime tone so that sound triggers NEVER fail silently.
+ */
+function playSyntheticFallback(kind: GameSoundKind) {
+  const ctx = getAudioContext();
+  if (!ctx) return;
+  try {
+    if (ctx.state === "suspended" || (ctx.state as string) === "interrupted") {
+      void ctx.resume();
+    }
+    const now = ctx.currentTime;
+
+    const playTone = (freq: number, start: number, dur: number, type: OscillatorType = "sine", gain = 0.25) => {
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, now + start);
+      g.gain.setValueAtTime(gain, now + start);
+      g.gain.exponentialRampToValueAtTime(0.0001, now + start + dur);
+      osc.connect(g);
+      g.connect(ctx.destination);
+      osc.start(now + start);
+      osc.stop(now + start + dur);
+    };
+
+    switch (kind) {
+      case "correct":
+        // Two-tone pleasant major third
+        playTone(523.25, 0.0, 0.12, "sine", 0.3);
+        playTone(659.25, 0.1, 0.25, "sine", 0.3);
+        break;
+      case "wrong":
+        // Low buzzy chime
+        playTone(220, 0.0, 0.15, "triangle", 0.35);
+        playTone(174.61, 0.12, 0.25, "sawtooth", 0.2);
+        break;
+      case "sessionEnd":
+        // Celebratory harmonic chord
+        playTone(523.25, 0.0, 0.4, "sine", 0.25);
+        playTone(659.25, 0.08, 0.45, "sine", 0.25);
+        playTone(783.99, 0.16, 0.5, "sine", 0.25);
+        playTone(1046.5, 0.24, 0.6, "sine", 0.25);
+        break;
+      case "startSession":
+        // Upbeat ascending chime
+        playTone(440, 0.0, 0.1, "sine", 0.25);
+        playTone(554.37, 0.08, 0.12, "sine", 0.25);
+        playTone(659.25, 0.16, 0.25, "sine", 0.3);
+        break;
+      case "tap":
+        // Subtle clean 25ms pop
+        playTone(800, 0.0, 0.025, "sine", 0.15);
+        break;
+      case "levelUp":
+        // Triumphant fanfare
+        playTone(523.25, 0.0, 0.18, "sine", 0.3);
+        playTone(659.25, 0.14, 0.22, "sine", 0.3);
+        playTone(783.99, 0.28, 0.25, "sine", 0.3);
+        playTone(1046.5, 0.42, 0.6, "triangle", 0.35);
+        break;
+      case "coinSpend":
+        // Crisp metallic double chime
+        playTone(1174.66, 0.0, 0.12, "sine", 0.3);
+        playTone(1760.0, 0.08, 0.25, "sine", 0.25);
+        break;
+      case "confirm":
+        // Smooth affirmative swipe pulse
+        playTone(587.33, 0.0, 0.12, "sine", 0.25);
+        playTone(880.0, 0.08, 0.22, "sine", 0.3);
+        break;
+    }
+  } catch {
+    /* ignore fallback errors */
+  }
 }
 
 function keepHtmlAlive(el: HTMLAudioElement) {
@@ -138,14 +238,20 @@ function keepHtmlAlive(el: HTMLAudioElement) {
 }
 
 function playHtmlFallback(kind: GameSoundKind) {
-  if (missingSfx.has(kind)) return;
+  if (missingSfx.has(kind)) {
+    playSyntheticFallback(kind);
+    return;
+  }
   const el = new Audio(GAME_SOUND_URLS[kind]);
   el.preload = "auto";
   el.setAttribute("playsinline", "true");
   el.setAttribute("webkit-playsinline", "true");
-  configureMixWithCalls();
+  configureAudioSession();
   keepHtmlAlive(el);
-  void el.play().catch(() => {});
+  el.play().catch(() => {
+    // If HTML5 playback fails, use synthetic fallback
+    playSyntheticFallback(kind);
+  });
 }
 
 function playBuffer(kind: GameSoundKind): boolean {
@@ -187,7 +293,7 @@ async function decodeAll(ctx: AudioContext) {
 }
 
 export function unlockGameSounds() {
-  configureMixWithCalls();
+  configureAudioSession();
   const ctx = getAudioContext();
   if (!ctx) return;
   if (ctx.state === "suspended" || (ctx.state as string) === "interrupted") {
@@ -219,10 +325,9 @@ export function preloadGameSounds(): Promise<void> {
 
 function play(kind: GameSoundKind, waitForBuffer = false) {
   if (typeof window === "undefined") return;
-  if (missingSfx.has(kind) && !waitForBuffer) return;
 
   const run = async () => {
-    configureMixWithCalls();
+    configureAudioSession();
     const ctx = getAudioContext();
     if (waitForBuffer) await preloadGameSounds();
     else void preloadGameSounds();
@@ -236,7 +341,11 @@ function play(kind: GameSoundKind, waitForBuffer = false) {
     }
 
     if (playBuffer(kind)) return;
-    if (!missingSfx.has(kind)) playHtmlFallback(kind);
+    if (!missingSfx.has(kind)) {
+      playHtmlFallback(kind);
+      return;
+    }
+    playSyntheticFallback(kind);
   };
 
   void run();
@@ -283,6 +392,11 @@ function availableMusicFiles() {
   return HOME_MUSIC_FILES.map((f) => f.trim()).filter((f) => f.length > 0 && !missingMusic.has(f));
 }
 
+/**
+ * Fisher-Yates shuffle with cross-boundary repeat prevention:
+ * Ensures all songs play through in a random cycle before repeating,
+ * and the first track of a new cycle is not identical to the last track played!
+ */
 function shuffleBag(items: string[], avoidFirst: string | null) {
   const arr = [...items];
   for (let i = arr.length - 1; i > 0; i--) {
@@ -339,9 +453,9 @@ function playNextHomeTrack() {
   el.setAttribute("data-file", file);
   el.src = gameSoundUrl(file);
   el.volume = HOME_MUSIC_VOLUME;
-  configureMixWithCalls();
+  configureAudioSession();
   void el.play().catch(() => {
-    /* autoplay blocked until unlockGameSounds() */
+    /* Autoplay unlocked on first gesture via unlockGameSounds() */
   });
 }
 
@@ -349,7 +463,7 @@ async function ensureHomeMusicPlaying() {
   if (!musicWanted) return;
   const el = getMusicElement();
   if (!el) return;
-  configureMixWithCalls();
+  configureAudioSession();
   if (el.src && !el.paused) return;
   if (el.src && el.paused && el.currentTime > 0) {
     try {
@@ -375,14 +489,20 @@ export function isActiveQuizPath(pathname: string) {
   return pathname.startsWith("/session/play") || pathname.startsWith("/session/redo");
 }
 
+/**
+ * Background home music rules:
+ * - Plays when on Home or other non-session pages
+ * - Strictly PAUSES whenever inside any session path (/session/*)
+ * - Also paused on admin or login/register pages
+ */
 export function shouldPlayHomeMusic(pathname: string) {
-  if (isActiveQuizPath(pathname)) return false;
+  if (pathname.startsWith("/session")) return false;
   if (pathname.startsWith("/admin")) return false;
   if (pathname === "/login" || pathname === "/register") return false;
   return true;
 }
 
-const TAP_SELECTOR = "button, a[href], [role='button'], summary, input[type='button'], input[type='submit']";
+const TAP_SELECTOR = "button, a[href], [role='button'], summary, input[type='button'], input[type='submit'], [data-clickable='true']";
 let lastTapAt = 0;
 
 export function handleGlobalTap(event: MouseEvent) {
@@ -396,7 +516,7 @@ export function handleGlobalTap(event: MouseEvent) {
   const sfx = el.getAttribute("data-sfx");
   if (sfx === "none" || sfx === "start" || sfx === "confirm") return;
   const now = Date.now();
-  if (now - lastTapAt < 70) return;
+  if (now - lastTapAt < 65) return;
   lastTapAt = now;
   playTapSound();
 }
