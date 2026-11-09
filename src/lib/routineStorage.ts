@@ -1,9 +1,34 @@
 "use client";
 
-import { RoutineBlock } from "./routineTypes";
+import { RoutineBlock, RoutinePreset } from "./routineTypes";
 
 const STORAGE_KEY = "mcq_arena_routine_blocks_v1";
 const AI_PERMANENT_NOTES_KEY = "mcq_routine_ai_permanent_notes_v1";
+const AI_NAME_KEY = "mcq_ai_assistant_name_v1";
+const PRESETS_STORAGE_KEY = "mcq_routine_presets_v1";
+
+export const DEFAULT_AI_NAME = "Jarvis";
+
+export function getAiAssistantName(): string {
+  if (typeof window === "undefined") return DEFAULT_AI_NAME;
+  try {
+    const raw = localStorage.getItem(AI_NAME_KEY);
+    return raw && raw.trim() ? raw.trim() : DEFAULT_AI_NAME;
+  } catch {
+    return DEFAULT_AI_NAME;
+  }
+}
+
+export function setAiAssistantName(name: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    const clean = name.trim() || DEFAULT_AI_NAME;
+    localStorage.setItem(AI_NAME_KEY, clean);
+    window.dispatchEvent(new CustomEvent("ai-assistant-name-updated", { detail: clean }));
+  } catch (e) {
+    console.error("Failed to save AI assistant name:", e);
+  }
+}
 
 export const DEFAULT_PERMANENT_NOTES = `Coaching: Monday, Wednesday, and Friday from 2:30 PM to 5:00 PM
 School / Classes: 8:00 AM to 1:30 PM on weekdays
@@ -265,75 +290,61 @@ export function generateBlockId(): string {
   return "blk_" + Date.now().toString(36) + "_" + Math.random().toString(36).substring(2, 7);
 }
 
-/**
- * Apply a preset routine for exam prep or daily schedule
- */
-export function applyRoutinePreset(dateKey: string, presetName: "exam_day" | "daily_balanced" | "weekend_sprint"): RoutineBlock[] {
-  let newBlocks: Partial<RoutineBlock>[] = [];
-
-  if (presetName === "exam_day") {
-    newBlocks = [
+export const DEFAULT_PRESETS: RoutinePreset[] = [
+  {
+    id: "exam_day",
+    name: "Exam Sprint Day",
+    description: "High-yield intense sprint with physics, chemistry and timed MCQ practice",
+    isActive: true,
+    blocks: [
       {
         type: "normal",
         title: "Wake up & Morning Refresh",
         timeMode: "single",
         startTime: "06:30",
-        isCompleted: false,
       },
       {
         type: "normal",
-        title: "High-Protein Breakfast",
+        title: "Breakfast",
         timeMode: "range",
         startTime: "07:00",
         endTime: "07:30",
-        isCompleted: false,
       },
       {
         type: "study",
-        title: "High-Yield Morning Study",
+        title: "Morning Focus Study",
         subject: "Physics",
-        topic: "Core Formula Review & Mechanics",
+        topic: "Core Formula Review",
         timeMode: "range",
         startTime: "08:00",
         endTime: "10:30",
         notes: "Target top 30 frequently tested MCQ concepts",
-        subtasks: [
-          { id: "1", text: "Kinematics equations recap", completed: false },
-          { id: "2", text: "Solve 25 practice questions", completed: false },
-          { id: "3", text: "Review mistake notebook", completed: false },
-        ],
-        isCompleted: false,
+        subtasks: ["Formula recap", "Solve 25 questions", "Review mistake notebook"],
       },
       {
         type: "normal",
-        title: "Walk & Brain Rest",
+        title: "Brain Break & Fresh Air",
         timeMode: "range",
         startTime: "10:30",
         endTime: "11:00",
-        isCompleted: false,
       },
       {
         type: "study",
-        title: "Mid-Day Focus Block",
+        title: "Mid-Day Deep Focus",
         subject: "Chemistry",
         topic: "Organic Reaction Mechanisms",
         timeMode: "range",
         startTime: "11:00",
         endTime: "13:00",
-        notes: "Deep focus: no social media, phone on DND",
-        subtasks: [
-          { id: "1", text: "Named reactions flashcards", completed: false },
-          { id: "2", text: "Timed 20-min MCQ quiz", completed: false },
-        ],
-        isCompleted: false,
+        notes: "Phone on DND, practice reactions",
+        subtasks: ["Reaction flashcards", "Timed 20-min quiz"],
       },
       {
         type: "normal",
-        title: "Lunch & Power Nap",
+        title: "Lunch & Rest",
         timeMode: "range",
         startTime: "13:00",
         endTime: "14:15",
-        isCompleted: false,
       },
       {
         type: "study",
@@ -343,12 +354,8 @@ export function applyRoutinePreset(dateKey: string, presetName: "exam_day" | "da
         timeMode: "range",
         startTime: "16:00",
         endTime: "18:00",
-        notes: "Score above 85% accuracy in Arena practice",
-        subtasks: [
-          { id: "1", text: "Pedigree analysis problems", completed: false },
-          { id: "2", text: "Complete 2 ranked sessions", completed: false },
-        ],
-        isCompleted: false,
+        notes: "Target >85% accuracy in Arena practice",
+        subtasks: ["Complete 2 ranked sessions", "Redo mistakes"],
       },
       {
         type: "normal",
@@ -356,47 +363,44 @@ export function applyRoutinePreset(dateKey: string, presetName: "exam_day" | "da
         timeMode: "range",
         startTime: "19:00",
         endTime: "20:30",
-        isCompleted: false,
       },
       {
         type: "normal",
-        title: "Sleep & Recovery",
+        title: "Sleep",
         timeMode: "single",
         startTime: "23:00",
-        isCompleted: false,
       },
-    ];
-  } else if (presetName === "daily_balanced") {
-    newBlocks = [
+    ],
+  },
+  {
+    id: "daily_balanced",
+    name: "Daily Balanced",
+    description: "Standard balanced day with study blocks, breaks, and exercise",
+    isActive: true,
+    blocks: [
       {
         type: "normal",
         title: "Wake up & Water",
         timeMode: "single",
         startTime: "07:00",
-        isCompleted: false,
       },
       {
         type: "normal",
-        title: "Healthy Breakfast",
+        title: "Breakfast",
         timeMode: "range",
         startTime: "07:30",
         endTime: "08:00",
-        isCompleted: false,
       },
       {
         type: "study",
-        title: "Study Block 1",
-        subject: "Main Subject",
-        topic: "Chapter 1 Deep Dive",
+        title: "Focus Study Session 1",
+        subject: "Mathematics",
+        topic: "Calculus & Problem Solving",
         timeMode: "range",
         startTime: "08:30",
         endTime: "11:00",
-        notes: "Focus session",
-        subtasks: [
-          { id: "1", text: "Read notes", completed: false },
-          { id: "2", text: "Practice 15 questions", completed: false },
-        ],
-        isCompleted: false,
+        notes: "Deep focus on difficult formulas",
+        subtasks: ["Review notes", "Solve 20 questions"],
       },
       {
         type: "normal",
@@ -404,45 +408,246 @@ export function applyRoutinePreset(dateKey: string, presetName: "exam_day" | "da
         timeMode: "range",
         startTime: "12:30",
         endTime: "13:30",
-        isCompleted: false,
+      },
+      {
+        type: "study",
+        title: "Focus Study Session 2",
+        subject: "Physics",
+        topic: "Revision Sprint",
+        timeMode: "range",
+        startTime: "14:30",
+        endTime: "16:30",
+        subtasks: ["Speed MCQs", "Check mistakes"],
       },
       {
         type: "normal",
-        title: "Free Time / Workout",
+        title: "Free Time & Workout",
         timeMode: "range",
         startTime: "17:00",
         endTime: "18:30",
-        isCompleted: false,
+      },
+      {
+        type: "normal",
+        title: "Dinner & Relax",
+        timeMode: "range",
+        startTime: "19:30",
+        endTime: "20:30",
       },
       {
         type: "normal",
         title: "Sleep",
         timeMode: "single",
         startTime: "23:00",
-        isCompleted: false,
       },
-    ];
+    ],
+  },
+  {
+    id: "sick_recovery",
+    name: "Sick / Light Recovery Day",
+    description: "Gentle schedule when feeling tired or unwell, heavy on rest",
+    isActive: false,
+    blocks: [
+      {
+        type: "normal",
+        title: "Wake up naturally & Hydrate",
+        timeMode: "single",
+        startTime: "08:30",
+      },
+      {
+        type: "normal",
+        title: "Warm Breakfast & Tea",
+        timeMode: "range",
+        startTime: "09:00",
+        endTime: "09:45",
+      },
+      {
+        type: "study",
+        title: "Light Casual Reading",
+        subject: "General",
+        topic: "Light Flashcards & Mistakes Review",
+        timeMode: "range",
+        startTime: "10:30",
+        endTime: "11:45",
+        notes: "Low pressure, no hard calculations",
+      },
+      {
+        type: "normal",
+        title: "Comfort Food Lunch & Nap",
+        timeMode: "range",
+        startTime: "12:30",
+        endTime: "15:00",
+      },
+      {
+        type: "normal",
+        title: "Free Time / Movies / Rest",
+        timeMode: "range",
+        startTime: "16:00",
+        endTime: "19:00",
+      },
+      {
+        type: "normal",
+        title: "Light Dinner",
+        timeMode: "range",
+        startTime: "19:30",
+        endTime: "20:30",
+      },
+      {
+        type: "normal",
+        title: "Early Sleep & Recovery",
+        timeMode: "single",
+        startTime: "21:30",
+      },
+    ],
+  },
+  {
+    id: "weekend_deep_dive",
+    name: "No Coaching / Weekend Deep Dive",
+    description: "Long uninterrupted blocks for when you have no classes or coaching",
+    isActive: false,
+    blocks: [
+      {
+        type: "normal",
+        title: "Wake up & Energize",
+        timeMode: "single",
+        startTime: "07:00",
+      },
+      {
+        type: "normal",
+        title: "Breakfast",
+        timeMode: "range",
+        startTime: "07:30",
+        endTime: "08:00",
+      },
+      {
+        type: "study",
+        title: "Deep Dive Marathon: Block 1",
+        subject: "Physics",
+        topic: "Full Chapter Deep Dive",
+        timeMode: "range",
+        startTime: "08:30",
+        endTime: "12:00",
+        subtasks: ["Theory mastery", "Solve 40 MCQs", "Mistake review"],
+      },
+      {
+        type: "normal",
+        title: "Lunch & Power Rest",
+        timeMode: "range",
+        startTime: "12:30",
+        endTime: "14:00",
+      },
+      {
+        type: "study",
+        title: "Deep Dive Marathon: Block 2",
+        subject: "Chemistry",
+        topic: "High-Yield Practice",
+        timeMode: "range",
+        startTime: "14:30",
+        endTime: "17:30",
+        subtasks: ["Named reactions", "Practice problems"],
+      },
+      {
+        type: "normal",
+        title: "Free Time & Friends",
+        timeMode: "range",
+        startTime: "18:00",
+        endTime: "20:00",
+      },
+      {
+        type: "normal",
+        title: "Sleep",
+        timeMode: "single",
+        startTime: "23:00",
+      },
+    ],
+  },
+];
+
+export function getRoutinePresets(): RoutinePreset[] {
+  if (typeof window === "undefined") return DEFAULT_PRESETS;
+  try {
+    const raw = localStorage.getItem(PRESETS_STORAGE_KEY);
+    if (!raw) return DEFAULT_PRESETS;
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) && parsed.length > 0 ? parsed : DEFAULT_PRESETS;
+  } catch {
+    return DEFAULT_PRESETS;
   }
+}
+
+export function saveRoutinePresets(presets: RoutinePreset[]): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(PRESETS_STORAGE_KEY, JSON.stringify(presets));
+    window.dispatchEvent(new CustomEvent("routine-presets-updated"));
+  } catch (e) {
+    console.error("Failed to save routine presets:", e);
+  }
+}
+
+export function togglePresetActive(id: string): void {
+  const current = getRoutinePresets();
+  const updated = current.map((p) =>
+    p.id === id ? { ...p, isActive: !p.isActive } : p
+  );
+  saveRoutinePresets(updated);
+}
+
+export function saveCustomPreset(preset: RoutinePreset): void {
+  const current = getRoutinePresets();
+  const idx = current.findIndex((p) => p.id === preset.id);
+  let updated: RoutinePreset[];
+  if (idx >= 0) {
+    updated = [...current];
+    updated[idx] = preset;
+  } else {
+    updated = [...current, preset];
+  }
+  saveRoutinePresets(updated);
+}
+
+export function deleteCustomPreset(id: string): void {
+  const current = getRoutinePresets();
+  const updated = current.filter((p) => p.id !== id);
+  saveRoutinePresets(updated);
+}
+
+/**
+ * Apply any preset to a specific date
+ */
+export function applyPresetToDate(dateKey: string, presetId: string): RoutineBlock[] {
+  const presets = getRoutinePresets();
+  const targetPreset = presets.find((p) => p.id === presetId) || presets[0] || DEFAULT_PRESETS[0];
 
   const existing = getAllBlocks().filter((b) => b.date !== dateKey);
-  const instantiated: RoutineBlock[] = newBlocks.map((b, idx) => ({
+  const instantiated: RoutineBlock[] = targetPreset.blocks.map((b, idx) => ({
     id: generateBlockId(),
     date: dateKey,
-    type: b.type || "normal",
-    title: b.title || "Routine Block",
-    timeMode: b.timeMode || "single",
+    type: b.type,
+    title: b.title,
+    timeMode: b.timeMode,
     startTime: b.startTime,
     endTime: b.endTime,
     isCompleted: false,
     subject: b.subject,
     topic: b.topic,
     notes: b.notes,
-    subtasks: b.subtasks || [],
+    subtasks: b.subtasks?.map((st, sIdx) => ({
+      id: `st_${Date.now()}_${sIdx}`,
+      text: st,
+      completed: false,
+    })) || [],
     order: idx,
     createdAt: Date.now() + idx,
   }));
 
   saveAllBlocks([...existing, ...instantiated]);
   return instantiated;
+}
+
+/**
+ * Backward compatibility alias
+ */
+export function applyRoutinePreset(dateKey: string, presetName: string): RoutineBlock[] {
+  return applyPresetToDate(dateKey, presetName);
 }
 

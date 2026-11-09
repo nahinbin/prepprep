@@ -8,11 +8,9 @@ import {
   ChevronRight,
   Plus,
   BookOpen,
-  Coffee,
   Sparkles,
   CheckCircle2,
   X,
-  Bot,
   SlidersHorizontal,
 } from "lucide-react";
 import Link from "next/link";
@@ -26,16 +24,12 @@ import {
   toggleBlockCompletion,
   toggleSubtask,
   deleteBlock,
-  clearBlocksForDate,
-  clearCompletedForDate,
-  applyRoutinePreset,
 } from "@/lib/routineStorage";
 import { getUserSubjectsAndTopics } from "@/app/actions/subjects";
 import { getTopicMastery } from "@/lib/topicProgressStorage";
 import { BlockCard } from "@/components/routine/BlockCard";
 import { BlockEditorModal } from "@/components/routine/BlockEditorModal";
 import { RoutineCalendarModal } from "@/components/routine/RoutineCalendarModal";
-import { RoutineSettingsModal } from "@/components/routine/RoutineSettingsModal";
 import { AiScheduleGeneratorModal } from "@/components/routine/AiScheduleGeneratorModal";
 import { TopicCompletionModal } from "@/components/routine/TopicCompletionModal";
 import { TopicMasteryModal } from "@/components/routine/TopicMasteryModal";
@@ -73,7 +67,6 @@ export default function RoutinePage() {
 
   // Modals state
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [editingBlock, setEditingBlock] = useState<RoutineBlock | null>(null);
   const [editorInitialType, setEditorInitialType] = useState<BlockType>("study");
@@ -219,18 +212,6 @@ export default function RoutinePage() {
     setIsEditorOpen(true);
   };
 
-  const handleApplyPreset = (preset: "exam_day" | "daily_balanced") => {
-    applyRoutinePreset(selectedDate, preset);
-  };
-
-  const handleClearCompleted = () => {
-    clearCompletedForDate(selectedDate);
-  };
-
-  const handleClearAll = () => {
-    clearBlocksForDate(selectedDate);
-  };
-
   const handleScheduleGeneratedByAi = (summary: string) => {
     setAiToast({ summary });
   };
@@ -329,14 +310,14 @@ export default function RoutinePage() {
               <CalendarIcon className="w-5 h-5" />
             </button>
 
-            {/* Settings Button: ICON ONLY, NO TEXT (Strict requirement) */}
-            <button
-              onClick={() => setIsSettingsOpen(true)}
+            {/* Settings Button: Dedicated Settings Page */}
+            <Link
+              href="/routine/settings"
               className="w-11 h-11 rounded-2xl bg-card hover:bg-white/10 border border-white/10 text-muted-foreground hover:text-foreground flex items-center justify-center transition-all active:scale-95 shadow-sm"
-              aria-label="Settings"
+              aria-label="Routine Settings"
             >
               <SettingsIcon className="w-5 h-5" />
-            </button>
+            </Link>
 
             {/* Mobile Navigation Menu */}
             <NavMenu />
@@ -356,13 +337,13 @@ export default function RoutinePage() {
                 </span>
               </div>
               <div className="flex items-center gap-3">
-                <button
-                  onClick={() => setIsTopicMasteryOpen(true)}
+                <Link
+                  href="/subjects/progress"
                   className="text-xs text-muted-foreground hover:text-primary transition-colors flex items-center gap-1"
                 >
                   <SlidersHorizontal className="w-3.5 h-3.5" />
                   <span>Topic Progress</span>
-                </button>
+                </Link>
                 <span className="text-primary font-black tabular-nums">
                   {progressPercent}%
                 </span>
@@ -380,33 +361,28 @@ export default function RoutinePage() {
         )}
 
         {/* ================================================================= */}
-        {/*  BLOCKS LIST OR INITIAL EMPTY STATE                              */}
+        {/*  BLOCKS LIST OR INITIAL EMPTY STATE (Minimal Notion aesthetic)   */}
         {/* ================================================================= */}
         {totalCount === 0 ? (
-          /* Initial Empty State */
-          <div className="p-8 sm:p-12 rounded-3xl bg-card/60 border border-white/10 text-center space-y-6 flex flex-col items-center justify-center animate-in fade-in duration-200">
-            <div className="w-16 h-16 rounded-3xl bg-gradient-to-br from-violet-600 to-primary text-white flex items-center justify-center shadow-lg shadow-violet-600/20">
-              <Sparkles className="w-8 h-8" />
-            </div>
-
-            <div className="space-y-1.5 max-w-sm">
-              <h2 className="text-2xl sm:text-3xl font-black text-foreground tracking-tight">
-                Add your first block
+          /* Clean Minimal Empty State */
+          <div className="py-16 px-4 rounded-3xl bg-card/40 border border-white/10 text-center space-y-5 flex flex-col items-center justify-center animate-in fade-in duration-200">
+            <div className="space-y-1">
+              <h2 className="text-xl sm:text-2xl font-black text-foreground tracking-tight">
+                No blocks for this day
               </h2>
-              <p className="text-sm font-medium text-muted-foreground">
-                Plan your day with study sprints and daily routines for{" "}
-                <span className="text-foreground font-bold">{formattedDate}</span>.
+              <p className="text-xs text-muted-foreground font-medium">
+                Add blocks or let AI build your schedule for {formattedDate}
               </p>
             </div>
 
-            {/* Primary Action Buttons: One-Click AI Generate + Manual Blocks */}
+            {/* Clean Action Buttons */}
             <div className="flex flex-col gap-2.5 w-full max-w-xs">
               <button
                 onClick={() => setIsAiGeneratorOpen(true)}
-                className="w-full py-4 px-4 rounded-2xl bg-gradient-to-r from-violet-600 via-primary to-purple-600 hover:brightness-110 text-white font-black text-base flex items-center justify-center gap-2 shadow-xl shadow-violet-600/30 transition-all active:scale-95"
+                className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-violet-600 to-primary hover:brightness-110 text-white font-black text-sm flex items-center justify-center gap-2 shadow-lg shadow-violet-600/30 transition-all active:scale-95"
               >
-                <Sparkles className="w-5 h-5" />
-                <span>Build My Day with AI</span>
+                <Sparkles className="w-4 h-4" />
+                <span>Build with AI</span>
               </button>
 
               <div className="flex gap-2">
@@ -415,36 +391,17 @@ export default function RoutinePage() {
                   className="flex-1 py-3 px-3 rounded-2xl bg-violet-600/20 hover:bg-violet-600/30 border border-violet-500/30 text-violet-300 font-bold text-xs flex items-center justify-center gap-1.5 transition-all active:scale-95"
                 >
                   <BookOpen className="w-4 h-4 text-violet-400" />
-                  <span>+ Study</span>
+                  <span>+ Study Block</span>
                 </button>
 
                 <button
                   onClick={() => handleAddNew("normal")}
                   className="flex-1 py-3 px-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-foreground font-bold text-xs flex items-center justify-center gap-1.5 transition-all active:scale-95"
                 >
-                  <Coffee className="w-4 h-4" />
-                  <span>+ Normal</span>
+                  <Plus className="w-4 h-4" />
+                  <span>+ Add Block</span>
                 </button>
               </div>
-            </div>
-
-            {/* Quick 1-tap template suggestion */}
-            <div className="pt-4 border-t border-white/5 w-full max-w-sm flex flex-col gap-2">
-              <button
-                onClick={() => handleApplyPreset("exam_day")}
-                className="w-full py-2.5 px-3 rounded-xl bg-violet-500/10 hover:bg-violet-500/20 border border-violet-500/20 text-violet-300 text-xs font-bold flex items-center justify-center gap-2 transition-colors"
-              >
-                <Sparkles className="w-3.5 h-3.5 text-violet-400" />
-                <span>Load Complete Exam Day Routine Preset</span>
-              </button>
-
-              <Link
-                href="/chat"
-                className="w-full py-2.5 px-3 rounded-xl bg-white/5 hover:bg-white/10 text-muted-foreground hover:text-foreground text-xs font-bold flex items-center justify-center gap-2 transition-colors"
-              >
-                <Bot className="w-3.5 h-3.5 text-primary" />
-                <span>Ask AI Assistant to Add Topics or Help</span>
-              </Link>
             </div>
           </div>
         ) : (
@@ -463,23 +420,31 @@ export default function RoutinePage() {
           </div>
         )}
 
-        {/* Quick Add Bar (Always handy on desktop & mobile) */}
+        {/* Quick Add Bar */}
         {totalCount > 0 && (
           <div className="flex items-center gap-2 pt-2">
             <button
               onClick={() => setIsAiGeneratorOpen(true)}
-              className="flex-1 py-3 px-3 rounded-2xl bg-gradient-to-r from-violet-600/30 to-primary/30 hover:from-violet-600/40 hover:to-primary/40 border border-violet-500/40 text-violet-300 font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all active:scale-98"
+              className="flex-1 py-3 px-3 rounded-2xl bg-gradient-to-r from-violet-600/20 to-primary/20 hover:from-violet-600/30 hover:to-primary/30 border border-violet-500/30 text-violet-300 font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all active:scale-98"
             >
               <Sparkles className="w-4 h-4 text-violet-400" />
-              <span>Regenerate with AI</span>
+              <span>Build with AI</span>
             </button>
 
             <button
               onClick={() => handleAddNew("study")}
-              className="flex-1 py-3 px-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-foreground font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all active:scale-98"
+              className="flex-1 py-3 px-3 rounded-2xl bg-violet-600/20 hover:bg-violet-600/30 border border-violet-500/30 text-violet-300 font-bold text-xs sm:text-sm flex items-center justify-center gap-1.5 transition-all active:scale-98"
+            >
+              <BookOpen className="w-4 h-4 text-violet-400" />
+              <span>+ Study</span>
+            </button>
+
+            <button
+              onClick={() => handleAddNew("normal")}
+              className="flex-1 py-3 px-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-foreground font-bold text-xs sm:text-sm flex items-center justify-center gap-1.5 transition-all active:scale-98"
             >
               <Plus className="w-4 h-4" />
-              <span>+ Add Block</span>
+              <span>+ Block</span>
             </button>
           </div>
         )}
@@ -525,16 +490,13 @@ export default function RoutinePage() {
             </div>
 
             <div className="flex items-center gap-1.5 shrink-0">
-              <button
-                type="button"
-                onClick={() => {
-                  setAiToast(null);
-                  setIsSettingsOpen(true);
-                }}
+              <Link
+                href="/routine/settings"
+                onClick={() => setAiToast(null)}
                 className="py-1.5 px-3 rounded-xl bg-white/10 hover:bg-white/15 text-xs font-black text-foreground transition-colors"
               >
-                Review
-              </button>
+                Settings
+              </Link>
               <button
                 type="button"
                 onClick={() => setAiToast(null)}
@@ -589,21 +551,6 @@ export default function RoutinePage() {
         selectedDate={selectedDate}
         onSelectDate={setSelectedDate}
         dateMap={dateMap}
-      />
-
-      {/* Settings Modal (Opened via top Settings Icon) */}
-      <RoutineSettingsModal
-        isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
-        onOpenCalendar={() => setIsCalendarOpen(true)}
-        onOpenTopicMastery={() => setIsTopicMasteryOpen(true)}
-        onAddNewBlock={handleAddNew}
-        onApplyPreset={handleApplyPreset}
-        onClearCompleted={handleClearCompleted}
-        onClearAll={handleClearAll}
-        formattedDate={formattedDate}
-        totalBlocks={totalCount}
-        completedBlocks={completedCount}
       />
 
       {/* Block Editor / Creator Modal */}

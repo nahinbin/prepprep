@@ -140,7 +140,7 @@ function BlockEditorForm({
           }`}
         >
           <Coffee className="w-4 h-4" />
-          <span>Normal Block</span>
+          <span>Block</span>
         </button>
       </div>
 

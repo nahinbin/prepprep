@@ -35,3 +35,24 @@ export interface DaySummary {
   normalCount: number;
 }
 
+export interface RoutinePresetBlock {
+  type: BlockType;
+  title: string;
+  timeMode: TimeMode;
+  startTime?: string;
+  endTime?: string;
+  subject?: string;
+  topic?: string;
+  notes?: string;
+  subtasks?: string[];
+}
+
+export interface RoutinePreset {
+  id: string;
+  name: string;
+  description: string;
+  isActive: boolean;
+  blocks: RoutinePresetBlock[];
+  isCustom?: boolean;
+}
+

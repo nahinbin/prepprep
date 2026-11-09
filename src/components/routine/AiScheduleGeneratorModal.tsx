@@ -149,44 +149,29 @@ export function AiScheduleGeneratorModal({
             </div>
             <div>
               <h4 className="font-black text-lg text-foreground">
-                AI is crafting your day...
+                Building your schedule...
               </h4>
-              <p className="text-xs text-muted-foreground font-medium mt-1 max-w-xs mx-auto">
-                Reviewing your subjects, prioritizing unfinished topics, and scheduling breaks.
+              <p className="text-xs text-muted-foreground font-medium mt-1">
+                Optimizing study sprints and breaks for {formattedDate}.
               </p>
             </div>
           </div>
         ) : (
           <div className="mt-4 space-y-4">
-            {/* Permanent Notes Preview Badge */}
-            <div className="p-3.5 rounded-2xl bg-white/5 border border-white/5 flex items-start gap-3">
-              <div className="w-8 h-8 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 mt-0.5">
-                <FileText className="w-4 h-4" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <span className="text-[11px] font-black uppercase tracking-wider text-primary block mb-0.5">
-                  Permanent Habits Active (from Settings)
-                </span>
-                <p className="text-xs text-muted-foreground line-clamp-2">
-                  {permanentNotes || "Default student schedule rules applied."}
-                </p>
-              </div>
-            </div>
-
-            {/* Temporary Note for Today */}
+            {/* Note for Today */}
             <div>
               <label className="block text-xs font-bold text-foreground mb-1.5 pl-1">
-                Add note for today <span className="text-muted-foreground font-normal">(Optional)</span>
+                Notes for today <span className="text-muted-foreground font-normal">(Optional)</span>
               </label>
               <textarea
                 rows={3}
-                placeholder="e.g. I have coaching today, dentist at 3 PM, focus mostly on Physics..."
+                placeholder="e.g. Coaching today at 2:30 PM, focus on Physics, feeling tired..."
                 value={todayNote}
                 onChange={(e) => setTodayNote(e.target.value)}
                 className="w-full px-4 py-3 rounded-2xl bg-white/5 border border-white/10 text-foreground placeholder:text-muted-foreground text-sm font-medium focus:outline-none focus:border-primary transition-all resize-none"
               />
 
-              {/* Fast Suggestions */}
+              {/* Suggestions */}
               <div className="flex flex-wrap gap-1.5 mt-2">
                 {TEMPORARY_SUGGESTIONS.map((sug) => (
                   <button
@@ -216,7 +201,7 @@ export function AiScheduleGeneratorModal({
                 className="flex-1 py-3.5 px-4 rounded-2xl bg-gradient-to-r from-violet-600 to-primary hover:brightness-110 text-white font-black text-sm flex items-center justify-center gap-2 shadow-lg shadow-violet-600/30 transition-all active:scale-95"
               >
                 <Sparkles className="w-4 h-4" />
-                <span>Confirm & Generate Schedule</span>
+                <span>Build Schedule</span>
               </button>
 
               <button

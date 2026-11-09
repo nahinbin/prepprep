@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Card } from "@/components/ui/Card";
@@ -16,8 +17,8 @@ import {
   Layers,
   AlertTriangle,
   X,
-  Sparkles,
   Check,
+  CheckCheck,
 } from "lucide-react";
 import {
   createSubject,
@@ -62,11 +63,19 @@ function SlideToConfirm({
   const [sliderPosition, setSliderPosition] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
+  const [containerWidth, setContainerWidth] = useState(300);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const updatePosition = (clientX: number) => {
+  useEffect(() => {
+    if (containerRef.current) {
+      setContainerWidth(containerRef.current.clientWidth);
+    }
+  }, []);
+
+  const updatePosition = useCallback((clientX: number) => {
     if (!containerRef.current || confirmed || disabled) return;
     const rect = containerRef.current.getBoundingClientRect();
+    setContainerWidth(rect.width);
     const handleWidth = 52;
     const maxDrag = rect.width - handleWidth - 8;
     const currentX = clientX - rect.left - handleWidth / 2;
@@ -81,7 +90,7 @@ function SlideToConfirm({
       playConfirmSound();
       onConfirm();
     }
-  };
+  }, [confirmed, disabled, onConfirm]);
 
   const handleTouchMove = (e: React.TouchEvent) => {
     if (!isDragging) return;
@@ -103,7 +112,7 @@ function SlideToConfirm({
         window.removeEventListener("mouseup", onUp);
       };
     }
-  }, [isDragging, confirmed, disabled]);
+  }, [isDragging, confirmed, updatePosition]);
 
   const handleEnd = () => {
     if (confirmed) return;
@@ -113,7 +122,6 @@ function SlideToConfirm({
     }
   };
 
-  const containerWidth = containerRef.current ? containerRef.current.clientWidth : 300;
   const maxOffset = Math.max(0, containerWidth - 60);
 
   return (
@@ -274,7 +282,15 @@ export function SubjectManagement({ subjects }: { subjects: Subject[] }) {
             </div>
           </div>
 
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2">
+            <Link
+              href="/subjects/progress"
+              className="inline-flex items-center gap-1.5 h-11 px-3.5 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs sm:text-sm font-bold text-foreground transition-all active:scale-95 shadow-sm"
+            >
+              <CheckCheck className="w-4 h-4 text-emerald-400" />
+              <span>Completed Topics</span>
+            </Link>
+
             <Button
               onClick={() => {
                 setShowAddSubjectModal(true);
@@ -306,7 +322,7 @@ export function SubjectManagement({ subjects }: { subjects: Subject[] }) {
             </div>
             <div>
               <h3 className="text-xl font-black text-foreground">No subjects yet</h3>
-              <p className="text-sm text-muted-foreground mt-1">Click "Add Subject" above to create your first subject!</p>
+              <p className="text-sm text-muted-foreground mt-1">Click &quot;Add Subject&quot; above to create your first subject!</p>
             </div>
             <Button
               onClick={() => setShowAddSubjectModal(true)}
@@ -661,7 +677,7 @@ export function SubjectManagement({ subjects }: { subjects: Subject[] }) {
               </div>
             ) : (
               <p className="text-sm font-semibold text-muted-foreground">
-                Are you sure you want to delete <strong className="text-foreground">"{deleteTarget.name}"</strong>? This action cannot be undone.
+                Are you sure you want to delete <strong className="text-foreground">&quot;{deleteTarget.name}&quot;</strong>? This action cannot be undone.
               </p>
             )}
 

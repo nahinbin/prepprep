@@ -1,40 +1,77 @@
 "use server";
 
-import { generateGeminiText, isGeminiConfigured } from "@/lib/gemini";
+import { generateGeminiText, generateGeminiJson, isGeminiConfigured } from "@/lib/gemini";
 import { bulkAddTopicsToSubject, getUserSubjectsAndTopics } from "@/app/actions/subjects";
+
+export interface GeneratedQuizQuestion {
+  question: string;
+  options: string[];
+  answerIndex: number;
+  explanation: string;
+}
+
+export interface GeneratedQuiz {
+  title: string;
+  subject?: string;
+  questions: GeneratedQuizQuestion[];
+}
 
 export interface ChatMessage {
   id: string;
   role: "user" | "assistant" | "system";
   content: string;
   actionTaken?: {
-    type: "added_topics" | "study_tip";
+    type:
+      | "added_topics"
+      | "study_tip"
+      | "added_block"
+      | "updated_notepad"
+      | "generated_schedule"
+      | "created_quiz";
     subjectName?: string;
     addedCount?: number;
     skippedCount?: number;
     topics?: string[];
+    blockData?: {
+      type: "study" | "normal";
+      title: string;
+      subject?: string;
+      topic?: string;
+      startTime?: string;
+      endTime?: string;
+      notes?: string;
+    };
+    newNotepadText?: string;
+    scheduleSummary?: string;
   };
+  generatedQuiz?: GeneratedQuiz;
   timestamp: number;
+}
+
+export interface ChatContext {
+  aiName?: string;
+  notepadNotes?: string;
+  activePresets?: string[];
 }
 
 export async function sendChatMessage(
   message: string,
-  history: Array<{ role: "user" | "assistant"; content: string }>
+  history: Array<{ role: "user" | "assistant"; content: string }>,
+  context: ChatContext = {}
 ): Promise<ChatMessage> {
   const trimmed = message.trim();
   const lower = trimmed.toLowerCase();
+  const aiName = context.aiName?.trim() || "Jarvis";
 
   // 1. Detect if user is asking to add topics to a subject
   // e.g. "add these topics to math: algebra, calculus, geometry"
-  // or "add topics to physics", "create topics for cardiology in medicine"
   const addTopicsRegex = /(?:add|create|put|insert)(?:\s+(?:these|the following|some|\d+))?\s+topics?\s+(?:to|in|under|for)\s+([a-zA-Z0-9_\s]+?)[:\n\-\?]([\s\S]+)/i;
-  const match = trimmed.match(addTopicsRegex);
+  const matchTopics = trimmed.match(addTopicsRegex);
 
-  if (match) {
-    const rawSubject = match[1].replace(/^(?:the subject|subject)\s+/i, "").trim();
-    const rawTopics = match[2];
+  if (matchTopics) {
+    const rawSubject = matchTopics[1].replace(/^(?:the subject|subject)\s+/i, "").trim();
+    const rawTopics = matchTopics[2];
 
-    // Split topics by newline, comma, bullet points, numbering
     const extractedTopics = rawTopics
       .split(/[\n,;•\-\*]+/)
       .map((t) => t.replace(/^\s*\d+[\.\)\-]?\s*/, "").trim())
@@ -55,7 +92,7 @@ export async function sendChatMessage(
           return {
             id: "msg_" + Date.now().toString(36),
             role: "assistant",
-            content: `✅ Successfully updated **${res.subjectName}**!\n\n• **${res.addedCount}** new topics added\n• **${res.skippedCount}** topics were already in your database (skipped to prevent duplicates)\n\nAdded topics:\n${res.addedTopics.slice(0, 10).map((t) => `• ${t}`).join("\n")}${res.addedTopics.length > 10 ? `\n• ...and ${res.addedTopics.length - 10} more` : ""}\n\nYou can now schedule these directly in your Daily Routine or practice them in the Question Bank!`,
+            content: `✅ I've updated **${res.subjectName}** for you!\n\n• **${res.addedCount}** new topics added to your Question Bank & Routine\n• **${res.skippedCount}** duplicates skipped\n\nAdded:\n${res.addedTopics.slice(0, 10).map((t) => `• ${t}`).join("\n")}${res.addedTopics.length > 10 ? `\n• ...and ${res.addedTopics.length - 10} more` : ""}\n\nYou can now study these or practice them in MCQ Arena!`,
             actionTaken: {
               type: "added_topics",
               subjectName: res.subjectName,
@@ -77,33 +114,178 @@ export async function sendChatMessage(
     }
   }
 
-  // 2. Fetch existing subjects to give Gemini context
-  const userSubjects = await getUserSubjectsAndTopics();
-  const subjectsContext = userSubjects
-    .map((s) => `• ${s.name} (${s.topics.length} topics: ${s.topics.slice(0, 8).join(", ")})`)
-    .join("\n");
+  // 2. Detect if user is asking to generate MCQs from text/reading
+  const isMcqRequest =
+    lower.includes("make mcq") ||
+    lower.includes("create mcq") ||
+    lower.includes("generate mcq") ||
+    lower.includes("make questions") ||
+    lower.includes("quiz me") ||
+    lower.includes("test me on") ||
+    (lower.includes("mcq") && trimmed.length > 80);
 
-  // 3. Call Gemini if configured
+  if (isMcqRequest && isGeminiConfigured()) {
+    try {
+      const quizPrompt = `Create 4 high-yield multiple-choice questions from the following text/concept:
+"${trimmed}"
+
+Return valid raw JSON matching this shape:
+{
+  "title": "Short descriptive quiz title",
+  "subject": "Subject name or General",
+  "questions": [
+    {
+      "question": "Question text here?",
+      "options": ["Option A", "Option B", "Option C", "Option D"],
+      "answerIndex": 0,
+      "explanation": "Clear explanation of why this is correct."
+    }
+  ]
+}`;
+
+      const generated = await generateGeminiJson<GeneratedQuiz>(quizPrompt, {
+        systemInstruction: "You are an elite exam question creator. Generate high-quality conceptual MCQs with 4 options each.",
+        temperature: 0.3,
+      });
+
+      if (generated && Array.isArray(generated.questions) && generated.questions.length > 0) {
+        return {
+          id: "msg_" + Date.now().toString(36),
+          role: "assistant",
+          content: `🎯 I generated a **${generated.questions.length}-question practice quiz** from your notes!\n\nClick **Start Practice Quiz** below to test yourself right now:`,
+          actionTaken: {
+            type: "created_quiz",
+          },
+          generatedQuiz: generated,
+          timestamp: Date.now(),
+        };
+      }
+    } catch (e) {
+      console.warn("Gemini quiz generation error:", e);
+    }
+  }
+
+  // Fallback MCQ creation if requested but Gemini failed or not configured
+  if (isMcqRequest) {
+    const topicHint = trimmed.slice(0, 40).replace(/[^\w\s]/gi, "");
+    return {
+      id: "msg_" + Date.now().toString(36),
+      role: "assistant",
+      content: `🎯 I've prepared a practice quiz on **${topicHint || "Core Concepts"}**!\n\nClick **Start Practice Quiz** to test your knowledge:`,
+      actionTaken: {
+        type: "created_quiz",
+      },
+      generatedQuiz: {
+        title: `Quiz: ${topicHint || "Practice Quiz"}`,
+        subject: "General",
+        questions: [
+          {
+            question: `What is the primary high-yield concept highlighted in: "${trimmed.slice(0, 60)}..."?`,
+            options: [
+              "Key foundational definition and principles",
+              "Secondary corollary hypothesis",
+              "Unrelated experimental artifact",
+              "Standard boundary condition",
+            ],
+            answerIndex: 0,
+            explanation: "Core fundamentals and active recall provide the highest exam score improvement.",
+          },
+          {
+            question: "How should this concept be applied under time constraints in exams?",
+            options: [
+              "Eliminate extreme distractors and verify formulas",
+              "Skip without reading the question stem",
+              "Only guess option C",
+              "Memorize without understanding mechanisms",
+            ],
+            answerIndex: 0,
+            explanation: "Elimination strategy and verified formulas give maximum accuracy.",
+          },
+        ],
+      },
+      timestamp: Date.now(),
+    };
+  }
+
+  // 3. Detect if user is asking to add a routine block
+  // e.g. "add a study block for Physics at 4 PM" or "add block: sleep at 11 PM"
+  const addBlockMatch = trimmed.match(/(?:add|create|schedule)\s+(?:a\s+)?(study|normal)?\s*block(?:\s+for|\s+to|\s*:)?\s*([^,\n]+?)(?:\s+(?:at|from)\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm)?))?/i);
+  if (addBlockMatch) {
+    const rawType = (addBlockMatch[1] || "").toLowerCase() === "study" ? "study" : "normal";
+    const rawSubjectOrTitle = addBlockMatch[2].trim();
+    const rawTime = addBlockMatch[3] ? addBlockMatch[3].trim() : undefined;
+
+    return {
+      id: "msg_" + Date.now().toString(36),
+      role: "assistant",
+      content: `📅 I've added a **${rawType === "study" ? "Study Block" : "Block"}** to your Daily Routine for today: **${rawSubjectOrTitle}**${rawTime ? ` at ${rawTime}` : ""}!\n\nIt is now saved in your routine schedule.`,
+      actionTaken: {
+        type: "added_block",
+        blockData: {
+          type: rawType,
+          title: rawSubjectOrTitle,
+          subject: rawType === "study" ? rawSubjectOrTitle : undefined,
+          startTime: rawTime,
+        },
+      },
+      timestamp: Date.now(),
+    };
+  }
+
+  // 4. Detect if user is asking to update permanent notepad
+  // e.g. "remember that on tuesdays I have football" or "add to my notepad: coaching on..."
+  if (lower.startsWith("remember") || lower.includes("add to notepad") || lower.includes("save to notepad") || lower.includes("add to my notes")) {
+    const cleanNote = trimmed.replace(/^(?:remember\s+(?:that)?|add\s+to\s+(?:my\s+)?notepad(?:\s*:)?|save\s+to\s+(?:my\s+)?notepad(?:\s*:)?|add\s+to\s+my\s+notes(?:\s*:)?)/i, "").trim();
+    if (cleanNote) {
+      return {
+        id: "msg_" + Date.now().toString(36),
+        role: "assistant",
+        content: `📝 Got it! I've saved that into your **Routine Notepad**:\n\n> "${cleanNote}"\n\nI will remember this whenever building your daily schedules!`,
+        actionTaken: {
+          type: "updated_notepad",
+          newNotepadText: cleanNote,
+        },
+        timestamp: Date.now(),
+      };
+    }
+  }
+
+  // 5. Fetch subjects & topics context
+  let subjectsContext = "";
+  try {
+    const userSubjects = await getUserSubjectsAndTopics();
+    subjectsContext = userSubjects
+      .map((s) => `• ${s.name} (${s.topics.length} topics: ${s.topics.slice(0, 8).join(", ")})`)
+      .join("\n");
+  } catch (err) {
+    console.warn("Failed to fetch subjects context for AI chat:", err);
+  }
+
+  // 6. Call Gemini LLM if configured
   if (isGeminiConfigured()) {
     try {
-      const systemInstruction = `You are the MCQ Arena Academic AI Assistant and study coach.
-You help students prepare for high-stakes exams (medical, engineering, university finals).
-You have direct knowledge of the student's current subjects and topics:
+      const systemInstruction = `You are ${aiName}, the student's personal AI study coach and academic partner for MCQ Arena.
+You are warm, brilliant, encouraging, and deeply knowledgeable across STEM, mathematics, accounting, finance, physics, chemistry, biology, medicine, and business.
+You have direct knowledge of the student's subjects:
 ${subjectsContext || "No subjects added yet."}
+Permanent Notepad Rules:
+${context.notepadNotes || "Standard schedule."}
 
-Guidelines:
-- Keep answers encouraging, concise, and structured.
-- If the student lists topics they want to add to a subject, tell them you can automatically save them if they say "Add topics to [Subject]: [list of topics]".
-- Give practical study advice: Pomodoro sprints, active recall, MCQ mistake review, spaced repetition.`;
+Your capabilities:
+1. You can teach and explain complex problems step-by-step.
+2. If the student gives you notes or readings, you can create MCQs from them.
+3. You can manage routine blocks, topics, and exam strategies.
+4. Keep explanations clear, engaging, and exam-focused. Answer in good markdown formatting.`;
 
-      const conversationPrompt = history
-        .slice(-6)
-        .map((h) => `${h.role === "user" ? "Student" : "Assistant"}: ${h.content}`)
-        .join("\n\n") + `\n\nStudent: ${trimmed}\nAssistant:`;
+      const conversationPrompt =
+        history
+          .slice(-6)
+          .map((h) => `${h.role === "user" ? "Student" : aiName}: ${h.content}`)
+          .join("\n\n") + `\n\nStudent: ${trimmed}\n${aiName}:`;
 
       const reply = await generateGeminiText(conversationPrompt, {
         systemInstruction,
-        temperature: 0.5,
+        temperature: 0.6,
       });
 
       return {
@@ -117,14 +299,16 @@ Guidelines:
     }
   }
 
-  // 4. Smart Local Reply Fallback
+  // 7. Smart Conversational Fallback
   let smartReply = "";
-  if (lower.includes("math") || lower.includes("physics") || lower.includes("biology") || lower.includes("chemistry")) {
-    smartReply = `I see you're focusing on your core subjects! Here's a tip: break down difficult formulas into 45-minute focus sprints in your **Daily Routine**, followed by 15 minutes of rapid MCQ practice in **Free Practice** mode.\n\nTo have me automatically add topics to your subject, just type:\n\`Add topics to [Subject Name]: Topic 1, Topic 2, Topic 3...\``;
-  } else if (lower.includes("exam") || lower.includes("final") || lower.includes("prepare")) {
-    smartReply = `Exam preparation is all about consistency! Make sure to use the **✨ Generate Schedule with AI** button on your Daily Routine page each morning. It automatically skips topics you've already completed (100%) and schedules your unfinished topics with optimal timing!`;
+  if (lower.includes("hello") || lower.includes("hi") || lower.includes("hey") || lower.includes("who are you")) {
+    smartReply = `Hey! I'm **${aiName}**, your personal study coach. I'm here to help you study, plan your routines, generate practice MCQs, and prepare for finals.\n\nWhat are you working on today?`;
+  } else if (lower.includes("math") || lower.includes("calculus") || lower.includes("derivative") || lower.includes("integral")) {
+    smartReply = `For Mathematics, active problem solving beats passive reading every time! I suggest breaking formulas down into 45-minute focus sprints in your **Daily Routine**, followed by rapid MCQ testing in **Practice** mode.\n\nWant me to generate some practice MCQs for you? Just say "Make MCQs on Calculus"!`;
+  } else if (lower.includes("exam") || lower.includes("final") || lower.includes("prepare") || lower.includes("schedule")) {
+    smartReply = `Exam preparation is about consistent sprints without burnout. Make sure to head over to **Daily Routine** and click **✨ Build with AI** each morning — it skips topics you've completed 100% and focuses on your unfinished high-yield subjects!`;
   } else {
-    smartReply = `Hello! I'm your MCQ Arena Study Coach. I can:\n\n1. **Auto-Add Topics**: Say \`Add topics to [Subject]: Topic 1, Topic 2...\` and I will instantly create them in your database, skipping any duplicates.\n2. **Optimize Routine**: Help you plan high-yield study sprints and breaks.\n3. **Exam Strategy**: Advise on spaced repetition and MCQ time management.\n\nWhat are you preparing for today?`;
+    smartReply = `I'm with you! As **${aiName}**, I can:\n\n• **Generate MCQs**: Paste any paragraph or lecture notes and say *"Make MCQs from this"*\n• **Auto-Add Topics**: Say *"Add topics to [Subject]: Topic 1, Topic 2"*\n• **Routine Scheduling**: Ask me to add blocks or update your notepad\n• **Explain Concepts**: Ask me anything in Math, Physics, Chemistry, Accounting, or Finance!\n\nHow can I help you right now?`;
   }
 
   return {
@@ -134,4 +318,5 @@ Guidelines:
     timestamp: Date.now(),
   };
 }
+
 
