@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { Sparkles, X } from "lucide-react";
 import {
+  applySoundEngineFromSettings,
   consumePendingLevelUp,
   handleGlobalTap,
   playLevelUpSound,
@@ -13,6 +14,7 @@ import {
   unlockGameSounds,
   type PendingLevelUp,
 } from "@/lib/gameSounds";
+import { subscribeSoundSettings } from "@/lib/soundSettings";
 import { Button } from "@/components/ui/Button";
 
 function AppAudioInner() {
@@ -31,7 +33,10 @@ function AppAudioInner() {
     window.addEventListener("focus", onResume);
     document.addEventListener("visibilitychange", onResume);
     document.addEventListener("click", handleGlobalTap, true);
+    applySoundEngineFromSettings();
+    const unsub = subscribeSoundSettings(() => applySoundEngineFromSettings());
     return () => {
+      unsub();
       window.removeEventListener("pointerdown", onGesture);
       window.removeEventListener("keydown", onGesture);
       window.removeEventListener("focus", onResume);

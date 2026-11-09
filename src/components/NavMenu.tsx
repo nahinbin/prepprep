@@ -8,7 +8,6 @@ import {
   X,
   Home,
   Layers,
-  User,
   LogOut,
   Gift,
   History,
@@ -16,15 +15,20 @@ import {
   Settings,
   Bell,
   Users,
+  CalendarCheck,
+  Bot,
 } from "lucide-react";
 import { logout } from "@/app/actions/auth";
 import { Suspense } from "react";
 import { BottomBar } from "@/components/BottomBar";
+import { QuickMuteButton } from "@/components/QuickMuteButton";
 
 const ShellCtx = createContext<{ mistakeCount: number }>({ mistakeCount: 0 });
 
 const links = [
   { href: "/", label: "Home", icon: Home, match: (p: string) => p === "/" },
+  { href: "/routine", label: "Daily Routine", icon: CalendarCheck, match: (p: string) => p === "/routine" || p === "/planner" || p === "/schedule" },
+  { href: "/chat", label: "AI Study Coach", icon: Bot, match: (p: string) => p === "/chat" },
   { href: "/notifications", label: "Notifications", icon: Bell, match: (p: string) => p === "/notifications" },
   { href: "/questions", label: "Question Bank", icon: Database, match: (p: string) => p === "/questions" },
   { href: "/history", label: "History", icon: History, match: (p: string) => p === "/history" },
@@ -94,12 +98,13 @@ export function Sidebar() {
             Logout
           </button>
         </form>
+        <QuickMuteButton className="w-12 h-auto rounded-2xl border-white/10" />
         <Link
           href="/settings"
-          className="flex items-center justify-center w-14 rounded-2xl text-muted-foreground hover:text-foreground hover:bg-white/5 transition-all"
+          className="flex items-center justify-center w-12 rounded-2xl text-muted-foreground hover:text-foreground hover:bg-white/5 transition-all"
           aria-label="Settings"
         >
-          <Settings className="w-6 h-6" />
+          <Settings className="w-5 h-5" />
         </Link>
       </div>
     </aside>
@@ -148,13 +153,14 @@ export function NavMenu() {
                   Logout
                 </button>
               </form>
+              <QuickMuteButton className="w-12 h-auto rounded-2xl border-white/10" />
               <Link
                 href="/settings"
                 onClick={() => setOpen(false)}
-                className="flex items-center justify-center w-14 rounded-2xl text-muted-foreground hover:text-foreground hover:bg-white/5 transition-all"
+                className="flex items-center justify-center w-12 rounded-2xl text-muted-foreground hover:text-foreground hover:bg-white/5 transition-all"
                 aria-label="Settings"
               >
-                <Settings className="w-6 h-6" />
+                <Settings className="w-5 h-5" />
               </Link>
             </div>
           </div>

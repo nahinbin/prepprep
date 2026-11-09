@@ -221,3 +221,102 @@ export async function getMistakeStatsBySubject() {
     }))
     .sort((a, b) => a.name.localeCompare(b.name));
 }
+
+/**
+ * Bulk add topics under an existing (or new) subject, skipping duplicates
+ */
+export async function bulkAddTopicsToSubject(
+  subjectNameOrId: string,
+  topicNames: string[]
+) {
+  const user = await requireAuth();
+  const trimmedSub = subjectNameOrId.trim();
+  if (!trimmedSub) return { error: "Subject is required." };
+  if (!topicNames || topicNames.length === 0) return { error: "No topics provided." };
+
+  // Filter unique non-empty topic names
+  const cleanTopics = Array.from(
+    new Set(topicNames.map((t) => t.trim()).filter(Boolean))
+  );
+
+  // Find existing subject (by ID or case-insensitive name)
+  let subject = await prisma.subject.findFirst({
+    where: {
+      userId: user.id,
+      OR: [
+        { id: trimmedSub },
+        { name: { equals: trimmedSub, mode: "insensitive" } },
+      ],
+    },
+    include: { topics: true },
+  });
+
+  // If not found, create it
+  if (!subject) {
+    subject = await prisma.subject.create({
+      data: { name: trimmedSub, userId: user.id },
+      include: { topics: true },
+    });
+  }
+
+  const existingTopicNames = new Set(
+    subject.topics.map((t) => t.name.toLowerCase())
+  );
+
+  const toCreate = cleanTopics
+    .filter((t) => !existingTopicNames.has(t.toLowerCase()))
+    .map((name) => ({
+      name,
+      subjectId: subject.id,
+    }));
+
+  if (toCreate.length > 0) {
+    await prisma.topic.createMany({
+      data: toCreate,
+      skipDuplicates: true,
+    });
+  }
+
+  revalidatePath("/subjects");
+  revalidatePath("/routine");
+  revalidatePath("/questions");
+
+  return {
+    success: true,
+    subjectName: subject.name,
+    subjectId: subject.id,
+    addedCount: toCreate.length,
+    skippedCount: cleanTopics.length - toCreate.length,
+    addedTopics: toCreate.map((t) => t.name),
+  };
+}
+
+/**
+ * Get all user subjects and their topics for AI scheduling and routine planning
+ */
+export async function getUserSubjectsAndTopics() {
+  try {
+    const user = await getSession();
+    if (!user) return [];
+
+    const subjects = await prisma.subject.findMany({
+      where: { userId: user.id },
+      include: {
+        topics: {
+          select: { id: true, name: true },
+          orderBy: { name: "asc" },
+        },
+      },
+      orderBy: { name: "asc" },
+    });
+
+    return subjects.map((s) => ({
+      id: s.id,
+      name: s.name,
+      topics: s.topics.map((t) => t.name),
+    }));
+  } catch {
+    return [];
+  }
+}
+

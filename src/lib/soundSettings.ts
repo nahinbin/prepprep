@@ -1,4 +1,4 @@
-import { GAME_SOUND_FILES, HOME_MUSIC_FILES, type GameSoundKind } from "./gameSounds";
+import { GAME_SOUND_FILES, HOME_MUSIC_FILES, type GameSoundKind } from "./soundAssets";
 
 const listeners = new Set<() => void>();
 
@@ -7,9 +7,11 @@ const DB_NAME = "mcq_sound_local";
 const DB_VERSION = 1;
 const MUSIC_STORE = "home_music";
 const SFX_STORE = "sfx_overrides";
-const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
+const MAX_UPLOAD_BYTES = 16 * 1024 * 1024;
 
 export type SoundSettings = {
+  muted: boolean;
+  musicPaused: boolean;
   masterVolume: number;
   sfxVolume: number;
   musicVolume: number;
@@ -33,6 +35,8 @@ export type CustomSfxOverride = {
 };
 
 export const DEFAULT_SOUND_SETTINGS: SoundSettings = {
+  muted: false,
+  musicPaused: false,
   masterVolume: 1,
   sfxVolume: 1,
   musicVolume: 1,
@@ -48,6 +52,8 @@ function clamp01(n: number) {
 
 function normalizeSettings(raw: Partial<SoundSettings> | null | undefined): SoundSettings {
   return {
+    muted: raw?.muted === true,
+    musicPaused: raw?.musicPaused === true,
     masterVolume: clamp01(raw?.masterVolume ?? 1),
     sfxVolume: clamp01(raw?.sfxVolume ?? 1),
     musicVolume: clamp01(raw?.musicVolume ?? 1),
@@ -89,13 +95,18 @@ export function subscribeSoundSettings(fn: () => void) {
 }
 
 export function sfxOutputLevel(settings = getSoundSettings()) {
-  if (!settings.sfxEnabled) return 0;
+  if (settings.muted || !settings.sfxEnabled) return 0;
   return clamp01(settings.masterVolume * settings.sfxVolume);
 }
 
 export function musicOutputLevel(settings = getSoundSettings()) {
-  if (!settings.musicEnabled) return 0;
+  if (settings.muted || !settings.musicEnabled || settings.musicPaused) return 0;
   return clamp01(settings.masterVolume * settings.musicVolume);
+}
+
+export function toggleMuted(): SoundSettings {
+  const current = getSoundSettings();
+  return patchSoundSettings({ muted: !current.muted });
 }
 
 export function soundFileLabel(filename: string) {
@@ -148,7 +159,7 @@ export async function listCustomHomeTracks(): Promise<CustomHomeTrack[]> {
 }
 
 export async function addCustomHomeTrack(file: File): Promise<{ error?: string }> {
-  if (file.size > MAX_UPLOAD_BYTES) return { error: "File is too large (max 8 MB)." };
+  if (file.size > MAX_UPLOAD_BYTES) return { error: "File is too large (max 16 MB)." };
   if (!file.type.startsWith("audio/") && !/\.(mp3|wav|ogg|m4a|aac|webm)$/i.test(file.name)) {
     return { error: "Please pick an audio file." };
   }
@@ -193,7 +204,7 @@ export async function listCustomSfxOverrides(): Promise<CustomSfxOverride[]> {
 }
 
 export async function setCustomSfx(kind: GameSoundKind, file: File): Promise<{ error?: string }> {
-  if (file.size > MAX_UPLOAD_BYTES) return { error: "File is too large (max 8 MB)." };
+  if (file.size > MAX_UPLOAD_BYTES) return { error: "File is too large (max 16 MB)." };
   if (!file.type.startsWith("audio/") && !/\.(mp3|wav|ogg|m4a|aac|webm)$/i.test(file.name)) {
     return { error: "Please pick an audio file." };
   }

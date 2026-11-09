@@ -6,10 +6,12 @@ import { AppShell, NavMenu } from "@/components/NavMenu";
 import { updateProfile } from "@/app/actions/user";
 import { User, Mail, Shield, Lock, Eye, ChevronRight, Check } from "lucide-react";
 import { BackButton } from "@/components/BackButton";
+import { SoundSettingsPanel } from "@/components/SoundSettingsPanel";
+import { QuickMuteButton } from "@/components/QuickMuteButton";
 
 type EditField = "username" | "name" | "bio" | "email" | null;
 
-export function SettingsClient({ user }: { user: UserType }) {
+export function SettingsClient({ user }: { user: UserType | null }) {
   const [editing, setEditing] = useState<EditField>(null);
   const [isPending, setIsPending] = useState(false);
 
@@ -35,97 +37,106 @@ export function SettingsClient({ user }: { user: UserType }) {
             <BackButton />
             <h1 className="text-2xl md:text-3xl font-black tracking-tight text-foreground">Settings</h1>
           </div>
-          <NavMenu />
-        </div>
-
-        <div className="rounded-3xl bg-card border-2 border-border shadow-sm overflow-hidden">
-          <div className="p-4 bg-muted/30 border-b border-border/50">
-            <h2 className="text-sm font-black uppercase tracking-wider text-muted-foreground flex items-center gap-2">
-              <User className="w-4 h-4" />
-              Public Profile
-            </h2>
-          </div>
-          <div className="divide-y divide-border/50">
-            <SettingRow 
-              label="Username" 
-              value={user.username} 
-              isEditing={editing === "username"}
-              onClick={() => setEditing("username")}
-              onCancel={() => setEditing(null)}
-              onSubmit={handleSave}
-              inputName="username"
-              inputType="text"
-              isPending={isPending}
-            />
-            <SettingRow 
-              label="Display Name" 
-              value={user.name || "Not set"} 
-              isEditing={editing === "name"}
-              onClick={() => setEditing("name")}
-              onCancel={() => setEditing(null)}
-              onSubmit={handleSave}
-              inputName="name"
-              inputType="text"
-              isPending={isPending}
-            />
-            <SettingRow 
-              label="Bio" 
-              value={user.bio || "Not set"} 
-              isEditing={editing === "bio"}
-              onClick={() => setEditing("bio")}
-              onCancel={() => setEditing(null)}
-              onSubmit={handleSave}
-              inputName="bio"
-              inputType="textarea"
-              isPending={isPending}
-            />
+          <div className="flex items-center gap-2">
+            <QuickMuteButton />
+            <NavMenu />
           </div>
         </div>
 
-        <div className="rounded-3xl bg-card border-2 border-border shadow-sm overflow-hidden">
-          <div className="p-4 bg-muted/30 border-b border-border/50">
-            <h2 className="text-sm font-black uppercase tracking-wider text-muted-foreground flex items-center gap-2">
-              <Shield className="w-4 h-4" />
-              Account & Privacy
-            </h2>
+        {user && (
+          <div className="rounded-3xl bg-card border-2 border-border shadow-sm overflow-hidden">
+            <div className="p-4 bg-muted/30 border-b border-border/50">
+              <h2 className="text-sm font-black uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+                <User className="w-4 h-4" />
+                Public Profile
+              </h2>
+            </div>
+            <div className="divide-y divide-border/50">
+              <SettingRow 
+                label="Username" 
+                value={user.username} 
+                isEditing={editing === "username"}
+                onClick={() => setEditing("username")}
+                onCancel={() => setEditing(null)}
+                onSubmit={handleSave}
+                inputName="username"
+                inputType="text"
+                isPending={isPending}
+              />
+              <SettingRow 
+                label="Display Name" 
+                value={user.name || "Not set"} 
+                isEditing={editing === "name"}
+                onClick={() => setEditing("name")}
+                onCancel={() => setEditing(null)}
+                onSubmit={handleSave}
+                inputName="name"
+                inputType="text"
+                isPending={isPending}
+              />
+              <SettingRow 
+                label="Bio" 
+                value={user.bio || "Not set"} 
+                isEditing={editing === "bio"}
+                onClick={() => setEditing("bio")}
+                onCancel={() => setEditing(null)}
+                onSubmit={handleSave}
+                inputName="bio"
+                inputType="textarea"
+                isPending={isPending}
+              />
+            </div>
           </div>
-          <div className="divide-y divide-border/50">
-            <SettingRow 
-              label="Email Address" 
-              value={user.email || "Not set"} 
-              isEditing={editing === "email"}
-              onClick={() => setEditing("email")}
-              onCancel={() => setEditing(null)}
-              onSubmit={handleSave}
-              inputName="email"
-              inputType="email"
-              isPending={isPending}
-            />
-            
-            <form action={togglePrivacy} className="w-full flex items-center justify-between p-4 hover:bg-muted/30 transition-colors">
-              <div className="space-y-0.5">
-                <p className="font-bold text-foreground">Public Account</p>
-                <p className="text-[11px] font-medium text-muted-foreground max-w-[200px] sm:max-w-xs">
-                  {user.isPublic ? "Anyone can view your stats and leaderboard rank." : "Only friends can view your stats and rank."}
-                </p>
-              </div>
+        )}
+
+        <SoundSettingsPanel />
+
+        {user && (
+          <div className="rounded-3xl bg-card border-2 border-border shadow-sm overflow-hidden">
+            <div className="p-4 bg-muted/30 border-b border-border/50">
+              <h2 className="text-sm font-black uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+                <Shield className="w-4 h-4" />
+                Account & Privacy
+              </h2>
+            </div>
+            <div className="divide-y divide-border/50">
+              <SettingRow 
+                label="Email Address" 
+                value={user.email || "Not set"} 
+                isEditing={editing === "email"}
+                onClick={() => setEditing("email")}
+                onCancel={() => setEditing(null)}
+                onSubmit={handleSave}
+                inputName="email"
+                inputType="email"
+                isPending={isPending}
+              />
               
-              <input type="hidden" name="username" value={user.username} />
-              <input type="hidden" name="name" value={user.name || ""} />
-              <input type="hidden" name="bio" value={user.bio || ""} />
-              <input type="hidden" name="email" value={user.email || ""} />
-              <input type="hidden" name="isPublic" value={user.isPublic ? "false" : "true"} /> {/* Toggle opposite */}
+              <form action={togglePrivacy} className="w-full flex items-center justify-between p-4 hover:bg-muted/30 transition-colors">
+                <div className="space-y-0.5">
+                  <p className="font-bold text-foreground">Public Account</p>
+                  <p className="text-[11px] font-medium text-muted-foreground max-w-[200px] sm:max-w-xs">
+                    {user.isPublic ? "Anyone can view your stats and leaderboard rank." : "Only friends can view your stats and rank."}
+                  </p>
+                </div>
+                
+                <input type="hidden" name="username" value={user.username} />
+                <input type="hidden" name="name" value={user.name || ""} />
+                <input type="hidden" name="bio" value={user.bio || ""} />
+                <input type="hidden" name="email" value={user.email || ""} />
+                <input type="hidden" name="isPublic" value={user.isPublic ? "false" : "true"} /> {/* Toggle opposite */}
 
-              <button 
-                type="submit" 
-                disabled={isPending}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${user.isPublic ? 'bg-primary' : 'bg-muted-foreground/30'}`}
-              >
-                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${user.isPublic ? 'translate-x-6' : 'translate-x-1'}`} />
-              </button>
-            </form>
+                <button 
+                  type="submit" 
+                  disabled={isPending}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${user.isPublic ? 'bg-primary' : 'bg-muted-foreground/30'}`}
+                >
+                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${user.isPublic ? 'translate-x-6' : 'translate-x-1'}`} />
+                </button>
+              </form>
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </AppShell>
   );

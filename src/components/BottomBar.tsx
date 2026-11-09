@@ -14,12 +14,16 @@ function BottomBarInner({ mistakeCount = 0 }: { mistakeCount?: number }) {
   const practiceActive = pathname === "/session/new" && mode === "practice";
   const mistakesActive = pathname === "/mistakes" || pathname.startsWith("/session/redo");
 
-  // Hide on all session flow pages (play, redo, result, review, new configuration) and auth/admin
+  // Hide on session flow, auth, admin, chat assistant, and routine planner pages
   if (
     pathname.startsWith("/session") ||
     pathname.startsWith("/admin") ||
     pathname === "/login" ||
-    pathname === "/register"
+    pathname === "/register" ||
+    pathname.startsWith("/chat") ||
+    pathname.startsWith("/routine") ||
+    pathname.startsWith("/planner") ||
+    pathname.startsWith("/schedule")
   ) {
     return null;
   }

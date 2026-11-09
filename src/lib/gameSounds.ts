@@ -1,64 +1,34 @@
 "use client";
 
 import { useEffect } from "react";
+import {
+  GAME_SOUND_FILES,
+  GAME_SOUND_URLS,
+  HOME_MUSIC_FILES,
+  HOME_MUSIC_VOLUME,
+  gameSoundUrl,
+  type GameSoundKind,
+} from "./soundAssets";
+import {
+  isBuiltinTrackEnabled,
+  listCustomHomeTracks,
+  listCustomSfxOverrides,
+  musicOutputLevel,
+  sfxOutputLevel,
+  subscribeSoundSettings,
+  type CustomHomeTrack,
+} from "./soundSettings";
 
-/**
- * =============================================================================
- *  GAME SOUNDS & MUSIC CONFIGURATION
- *  - Put your audio files into:  public/game_sounds/
- *  - Edit the filenames below.
- *  - If an audio file is missing or still loading, an instant synthetic
- *    audio chime plays so the app is NEVER silent.
- * =============================================================================
- */
-
-/** Base public directory for sound assets */
-export const GAME_SOUNDS_DIR = "/game_sounds";
-
-/** Core Sound Effects — change filenames as you wish */
-export const GAME_SOUND_FILES = {
-  correct: "correct_answer.mp3",
-  wrong: "wrong_answers.mp3",
-  sessionEnd: "sessionend.mp3",
-  startSession: "start_session.mp3",
-  tap: "tap.mp3",
-  levelUp: "level_up.mp3",
-  coinSpend: "coin_spend.mp3",
-  confirm: "confirm.mp3",
-} as const;
-
-/**
- * Home background playlist.
- * Add as many filenames as you want (e.g. "home_music_1.mp3", "track2.mp3", etc.)
- * The playlist engine shuffles through the full list before repeating,
- * and ensures the first track of a new cycle never duplicates the last track!
- */
-export const HOME_MUSIC_FILES = [
-  "home_music_1.mp3",
-  "home_music_2.mp3",
-  "home_music_3.mp3",
-];
-
-/** Background music volume level (0.0 to 1.0) */
-export const HOME_MUSIC_VOLUME = 0.35;
-
-export type GameSoundKind = keyof typeof GAME_SOUND_FILES;
-
-export function gameSoundUrl(filename: string) {
-  const name = filename.replace(/^\/+/, "").replace(/^game_sounds\//, "");
-  return `${GAME_SOUNDS_DIR}/${name}`;
-}
-
-export const GAME_SOUND_URLS = {
-  correct: gameSoundUrl(GAME_SOUND_FILES.correct),
-  wrong: gameSoundUrl(GAME_SOUND_FILES.wrong),
-  sessionEnd: gameSoundUrl(GAME_SOUND_FILES.sessionEnd),
-  startSession: gameSoundUrl(GAME_SOUND_FILES.startSession),
-  tap: gameSoundUrl(GAME_SOUND_FILES.tap),
-  levelUp: gameSoundUrl(GAME_SOUND_FILES.levelUp),
-  coinSpend: gameSoundUrl(GAME_SOUND_FILES.coinSpend),
-  confirm: gameSoundUrl(GAME_SOUND_FILES.confirm),
-} as const;
+export {
+  GAME_SOUNDS_DIR,
+  GAME_SOUND_FILES,
+  GAME_SOUND_LABELS,
+  GAME_SOUND_URLS,
+  HOME_MUSIC_FILES,
+  HOME_MUSIC_VOLUME,
+  gameSoundUrl,
+  type GameSoundKind,
+} from "./soundAssets";
 
 const LEVEL_UP_KEY = "mcq_pending_level_up";
 
@@ -114,10 +84,19 @@ function configureAudioSession() {
 
 let audioCtx: AudioContext | null = null;
 const buffers = new Map<GameSoundKind, AudioBuffer>();
+const customSfxBuffers = new Map<GameSoundKind, AudioBuffer>();
+const customSfxUrls = new Map<GameSoundKind, string>();
 const missingSfx = new Set<GameSoundKind>();
 const missingMusic = new Set<string>();
 let preloadPromise: Promise<void> | null = null;
 const htmlKeepAlive: HTMLAudioElement[] = [];
+
+type MusicClip = { key: string; src: string };
+let customMusicClips: MusicClip[] = [];
+const customMusicUrls = new Map<string, string>();
+let customSfxKey = "";
+let customMusicKey = "";
+let customLoadPromise: Promise<void> | null = null;
 
 let musicEl: HTMLAudioElement | null = null;
 let musicQueue: string[] = [];
@@ -161,7 +140,8 @@ function getAudioContext(): AudioContext | null {
  */
 function playSyntheticFallback(kind: GameSoundKind) {
   const ctx = getAudioContext();
-  if (!ctx) return;
+  const level = sfxOutputLevel();
+  if (!ctx || level <= 0) return;
   try {
     if (ctx.state === "suspended" || (ctx.state as string) === "interrupted") {
       void ctx.resume();
@@ -173,7 +153,7 @@ function playSyntheticFallback(kind: GameSoundKind) {
       const g = ctx.createGain();
       osc.type = type;
       osc.frequency.setValueAtTime(freq, now + start);
-      g.gain.setValueAtTime(gain, now + start);
+      g.gain.setValueAtTime(gain * level, now + start);
       g.gain.exponentialRampToValueAtTime(0.0001, now + start + dur);
       osc.connect(g);
       g.connect(ctx.destination);
@@ -238,33 +218,40 @@ function keepHtmlAlive(el: HTMLAudioElement) {
 }
 
 function playHtmlFallback(kind: GameSoundKind) {
-  if (missingSfx.has(kind)) {
+  const level = sfxOutputLevel();
+  if (level <= 0) return;
+  const customSrc = customSfxUrls.get(kind);
+  if (!customSrc && missingSfx.has(kind)) {
     playSyntheticFallback(kind);
     return;
   }
-  const el = new Audio(GAME_SOUND_URLS[kind]);
+  const el = new Audio(customSrc ?? GAME_SOUND_URLS[kind]);
   el.preload = "auto";
+  el.volume = level;
   el.setAttribute("playsinline", "true");
   el.setAttribute("webkit-playsinline", "true");
   configureAudioSession();
   keepHtmlAlive(el);
   el.play().catch(() => {
-    // If HTML5 playback fails, use synthetic fallback
-    playSyntheticFallback(kind);
+    if (!customSrc) playSyntheticFallback(kind);
   });
 }
 
 function playBuffer(kind: GameSoundKind): boolean {
   const ctx = getAudioContext();
-  const buffer = buffers.get(kind);
-  if (!ctx || !buffer) return false;
+  const level = sfxOutputLevel();
+  const buffer = customSfxBuffers.get(kind) ?? buffers.get(kind);
+  if (!ctx || !buffer || level <= 0) return false;
   try {
     if (ctx.state === "suspended" || (ctx.state as string) === "interrupted") {
       void ctx.resume();
     }
     const source = ctx.createBufferSource();
+    const gain = ctx.createGain();
     source.buffer = buffer;
-    source.connect(ctx.destination);
+    gain.gain.value = level;
+    source.connect(gain);
+    gain.connect(ctx.destination);
     source.start(0);
     return true;
   } catch {
@@ -309,7 +296,7 @@ export function unlockGameSounds() {
     /* ignore */
   }
   void preloadGameSounds();
-  if (musicWanted) void ensureHomeMusicPlaying();
+  applySoundEngineFromSettings();
 }
 
 export function preloadGameSounds(): Promise<void> {
@@ -323,12 +310,66 @@ export function preloadGameSounds(): Promise<void> {
   return preloadPromise ?? Promise.resolve();
 }
 
+async function decodeBlob(ctx: AudioContext, blob: Blob) {
+  const raw = await blob.arrayBuffer();
+  return ctx.decodeAudioData(raw.slice(0));
+}
+
+async function loadCustomAudioAssets() {
+  if (typeof window === "undefined") return;
+  if (customLoadPromise) await customLoadPromise.catch(() => {});
+  customLoadPromise = (async () => {
+    const [overrides, tracks] = await Promise.all([
+      listCustomSfxOverrides(),
+      listCustomHomeTracks(),
+    ]);
+    const sfxKey = overrides.map((o) => `${o.kind}:${o.name}:${o.blob.size}`).join("|");
+    const musicKey = tracks.map((t) => `${t.id}:${t.blob.size}`).join("|");
+    const ctx = getAudioContext();
+
+    if (sfxKey !== customSfxKey) {
+      customSfxKey = sfxKey;
+      customSfxBuffers.clear();
+      for (const url of customSfxUrls.values()) URL.revokeObjectURL(url);
+      customSfxUrls.clear();
+      for (const row of overrides) {
+        const kind = row.kind as GameSoundKind;
+        if (!(kind in GAME_SOUND_FILES)) continue;
+        customSfxUrls.set(kind, URL.createObjectURL(row.blob));
+        if (!ctx) continue;
+        try {
+          customSfxBuffers.set(kind, await decodeBlob(ctx, row.blob));
+        } catch {
+          /* HTML fallback uses the object URL */
+        }
+      }
+    }
+
+    if (musicKey !== customMusicKey) {
+      customMusicKey = musicKey;
+      for (const url of customMusicUrls.values()) URL.revokeObjectURL(url);
+      customMusicUrls.clear();
+      customMusicClips = tracks.map((t: CustomHomeTrack) => {
+        const src = URL.createObjectURL(t.blob);
+        customMusicUrls.set(t.id, src);
+        return { key: t.id, src };
+      });
+      musicQueue = [];
+    }
+  })().finally(() => {
+    customLoadPromise = null;
+  });
+  return customLoadPromise;
+}
+
 function play(kind: GameSoundKind, waitForBuffer = false) {
   if (typeof window === "undefined") return;
+  if (sfxOutputLevel() <= 0) return;
 
   const run = async () => {
     configureAudioSession();
     const ctx = getAudioContext();
+    await loadCustomAudioAssets();
     if (waitForBuffer) await preloadGameSounds();
     else void preloadGameSounds();
 
@@ -388,8 +429,27 @@ export function playAnswerSound(isCorrect: boolean) {
   else playWrongSound();
 }
 
-function availableMusicFiles() {
-  return HOME_MUSIC_FILES.map((f) => f.trim()).filter((f) => f.length > 0 && !missingMusic.has(f));
+export function playSoundKind(kind: GameSoundKind) {
+  play(kind);
+}
+
+function availableMusicClips(): MusicClip[] {
+  const builtin = HOME_MUSIC_FILES.map((f) => f.trim())
+    .filter((f) => f.length > 0 && !missingMusic.has(f) && isBuiltinTrackEnabled(f))
+    .map((f) => ({ key: f, src: gameSoundUrl(f) }));
+  return [...builtin, ...customMusicClips];
+}
+
+function clipSrc(key: string) {
+  return availableMusicClips().find((c) => c.key === key)?.src ?? gameSoundUrl(key);
+}
+
+function liveMusicVolume() {
+  return musicOutputLevel() * HOME_MUSIC_VOLUME;
+}
+
+function shouldMusicPlayNow() {
+  return musicWanted && liveMusicVolume() > 0;
 }
 
 /**
@@ -411,8 +471,9 @@ function shuffleBag(items: string[], avoidFirst: string | null) {
 }
 
 function takeNextMusicFile(): string | null {
-  const available = availableMusicFiles();
+  const available = availableMusicClips().map((c) => c.key);
   if (available.length === 0) return null;
+  musicQueue = musicQueue.filter((key) => available.includes(key));
   if (musicQueue.length === 0) {
     musicQueue = shuffleBag(available, lastMusicFile);
   }
@@ -427,19 +488,19 @@ function getMusicElement() {
     musicEl = new Audio();
     musicEl.preload = "auto";
     musicEl.loop = false;
-    musicEl.volume = HOME_MUSIC_VOLUME;
+    musicEl.volume = liveMusicVolume();
     musicEl.setAttribute("playsinline", "true");
     musicEl.setAttribute("webkit-playsinline", "true");
   }
   if (!musicListenersBound && musicEl) {
     musicListenersBound = true;
     musicEl.addEventListener("ended", () => {
-      if (musicWanted) playNextHomeTrack();
+      if (shouldMusicPlayNow()) playNextHomeTrack();
     });
     musicEl.addEventListener("error", () => {
       const current = musicEl?.getAttribute("data-file");
-      if (current) missingMusic.add(current);
-      if (musicWanted) playNextHomeTrack();
+      if (current && !current.startsWith("custom_")) missingMusic.add(current);
+      if (shouldMusicPlayNow()) playNextHomeTrack();
     });
   }
   return musicEl;
@@ -447,12 +508,12 @@ function getMusicElement() {
 
 function playNextHomeTrack() {
   const el = getMusicElement();
-  if (!el || !musicWanted) return;
+  if (!el || !shouldMusicPlayNow()) return;
   const file = takeNextMusicFile();
   if (!file) return;
   el.setAttribute("data-file", file);
-  el.src = gameSoundUrl(file);
-  el.volume = HOME_MUSIC_VOLUME;
+  el.src = clipSrc(file);
+  el.volume = liveMusicVolume();
   configureAudioSession();
   void el.play().catch(() => {
     /* Autoplay unlocked on first gesture via unlockGameSounds() */
@@ -460,10 +521,15 @@ function playNextHomeTrack() {
 }
 
 async function ensureHomeMusicPlaying() {
-  if (!musicWanted) return;
+  if (!shouldMusicPlayNow()) {
+    musicEl?.pause();
+    return;
+  }
+  await loadCustomAudioAssets();
   const el = getMusicElement();
   if (!el) return;
   configureAudioSession();
+  el.volume = liveMusicVolume();
   if (el.src && !el.paused) return;
   if (el.src && el.paused && el.currentTime > 0) {
     try {
@@ -476,13 +542,26 @@ async function ensureHomeMusicPlaying() {
   playNextHomeTrack();
 }
 
+export function applySoundEngineFromSettings() {
+  return loadCustomAudioAssets().then(() => {
+    if (musicEl) musicEl.volume = liveMusicVolume();
+    if (!shouldMusicPlayNow()) {
+      musicEl?.pause();
+      return;
+    }
+    void ensureHomeMusicPlaying();
+  });
+}
+
+if (typeof window !== "undefined") {
+  subscribeSoundSettings(() => {
+    void applySoundEngineFromSettings();
+  });
+}
+
 export function setHomeMusicEnabled(enabled: boolean) {
   musicWanted = enabled;
-  if (!enabled) {
-    musicEl?.pause();
-    return;
-  }
-  void ensureHomeMusicPlaying();
+  applySoundEngineFromSettings();
 }
 
 export function isActiveQuizPath(pathname: string) {
