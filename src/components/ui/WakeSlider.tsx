@@ -157,7 +157,7 @@ const WakeSlider: React.FC<WakeSliderProps> = ({
     pointerId.current = e.pointerId;
     try {
       e.currentTarget.setPointerCapture(e.pointerId);
-    } catch {}
+    } catch { }
     rootRef.current?.removeAttribute('data-instant');
     handleRef.current?.focus({ preventScroll: true });
     commitFromX(e.clientX);
@@ -169,7 +169,7 @@ const WakeSlider: React.FC<WakeSliderProps> = ({
     if (e.pointerId !== pointerId.current) return;
     try {
       e.currentTarget.releasePointerCapture(e.pointerId);
-    } catch {}
+    } catch { }
     pointerId.current = null;
   };
   const onKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>) => {
