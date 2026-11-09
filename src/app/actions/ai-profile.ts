@@ -4,9 +4,9 @@ import { prisma } from "@/lib/prisma";
 import { getSession } from "@/app/actions/auth";
 import { revalidatePath } from "next/cache";
 
-export const DEFAULT_AI_NAME = "AI Assistant";
+const DEFAULT_AI_NAME = "AI Assistant";
 
-export const DEFAULT_PRESETS = [
+const DEFAULT_PRESETS = [
   {
     name: "Standard School Day",
     description: "Balanced day with morning classes, afternoon coaching, and evening self-study.",

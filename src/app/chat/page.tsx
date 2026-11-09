@@ -206,7 +206,7 @@ function renderFormattedSpans(text: string) {
 }
 
 export default function ChatPage() {
-  const [aiName] = useState<string>(() => getAiAssistantName());
+  const [aiName, setAiName] = useState<string>(() => getAiAssistantName());
   const [sessions, setSessions] = useState<ChatSession[]>(() => {
     const loaded = loadSavedSessions();
     if (loaded.length > 0) return loaded;

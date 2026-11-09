@@ -42,6 +42,7 @@ export function OfflineSyncManager() {
       try {
         const res = await saveSessionData({
           clientSessionToken: session.clientSessionToken,
+          userId: session.userId,
           totalQuestions: session.totalQuestions,
           correctAnswers: session.correctAnswers,
           wrongAnswers: session.wrongAnswers,
@@ -62,6 +63,9 @@ export function OfflineSyncManager() {
           gainedXp += session.positivePoints - session.negativePoints;
         } else if ("error" in res && res.error === "Session is currently being saved") {
           // Token is currently processing, remove to avoid duplicate calls
+          removePendingSession(session.clientSessionToken);
+        } else if ("error" in res && res.error?.includes("User mismatch")) {
+          // Mismatched user session from a previous account, discard safely
           removePendingSession(session.clientSessionToken);
         }
       } catch (err) {

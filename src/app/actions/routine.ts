@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/app/actions/auth";
 import { revalidatePath } from "next/cache";
+import { RoutineSubtask } from "@/lib/routineTypes";
 
 async function requireUser() {
   const user = await getSession();
@@ -23,7 +24,7 @@ export interface DbRoutineBlock {
   subject?: string;
   topic?: string;
   notes?: string;
-  subtasks: Array<{ id: string; title: string; completed: boolean }>;
+  subtasks: RoutineSubtask[];
   order: number;
 }
 
@@ -70,7 +71,7 @@ export async function upsertDbRoutineBlock(block: {
   subject?: string;
   topic?: string;
   notes?: string;
-  subtasks?: Array<{ id: string; title: string; completed: boolean }>;
+  subtasks?: RoutineSubtask[];
   order?: number;
 }) {
   const user = await requireUser();
@@ -193,7 +194,7 @@ export async function bulkCreateDbRoutineBlocks(
     subject?: string;
     topic?: string;
     notes?: string;
-    subtasks?: Array<{ id: string; title: string; completed: boolean }>;
+    subtasks?: RoutineSubtask[];
     order?: number;
   }>
 ) {

@@ -6,7 +6,7 @@ import { getSession } from "@/app/actions/auth";
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 
-export const DEFAULT_AI_NAME = "AI Assistant";
+const DEFAULT_AI_NAME = "AI Assistant";
 
 export interface GeneratedQuizQuestion {
   question: string;
