@@ -40,10 +40,10 @@ export async function generateAiDailySchedule(
 ): Promise<GenerateAiScheduleResult> {
   const {
     dateKey,
-    dayOfWeek,
-    permanentNotes,
-    todayNote,
-    topicMastery,
+    dayOfWeek = "Today",
+    permanentNotes = "",
+    todayNote = "",
+    topicMastery = {},
     clientSubjects,
   } = params;
 
@@ -188,8 +188,8 @@ Output strictly valid JSON with this shape:
 
   // 4. Smart Heuristic Engine (Lightning-Fast Fallback)
   const isCoachingDay =
-    permanentNotes.toLowerCase().includes(dayOfWeek.toLowerCase()) ||
-    ["monday", "wednesday", "friday"].includes(dayOfWeek.toLowerCase());
+    (permanentNotes || "").toLowerCase().includes((dayOfWeek || "").toLowerCase()) ||
+    ["monday", "wednesday", "friday"].includes((dayOfWeek || "").toLowerCase());
 
   const partialTopics = eligibleTopics.filter((t) => t.status === "partial");
   const unstartedTopics = eligibleTopics.filter((t) => t.status === "not_started");

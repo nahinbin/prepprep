@@ -39,7 +39,7 @@ export const viewport: Viewport = {
   viewportFit: "cover",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     // suppressHydrationWarning: browser extensions (e.g. Trancy, AI sidebars)
     // inject attributes like `trancy-version` / `bis_skin_checked` into

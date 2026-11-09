@@ -31,7 +31,7 @@ export async function generateGeminiText(
     );
   }
 
-  const model = options.model || "gemini-1.5-flash";
+  const model = options.model || "gemini-3.5-flash-lite";
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
   const body: Record<string, unknown> = {
@@ -54,7 +54,7 @@ export async function generateGeminiText(
   }
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 12000);
+  const timeoutId = setTimeout(() => controller.abort(), 25000);
 
   try {
     const response = await fetch(url, {
@@ -68,9 +68,9 @@ export async function generateGeminiText(
 
     if (!response.ok) {
       const errorText = await response.text();
-      // If primary model is unavailable or rate-limited, attempt fallback to 2.0-flash
-      if (model === "gemini-1.5-flash" && (response.status === 404 || response.status === 429)) {
-        return generateGeminiText(prompt, { ...options, model: "gemini-2.0-flash" });
+      // If primary model is unavailable or rate-limited, attempt fallback to 3.5-flash
+      if (model === "gemini-3.5-flash-lite" && (response.status === 404 || response.status === 429 || response.status >= 500)) {
+        return generateGeminiText(prompt, { ...options, model: "gemini-3.5-flash" });
       }
       throw new Error(`Gemini API error (${response.status}): ${errorText}`);
     }

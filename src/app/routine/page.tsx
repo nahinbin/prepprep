@@ -25,14 +25,12 @@ import {
   toggleSubtask,
   deleteBlock,
 } from "@/lib/routineStorage";
-import { getUserSubjectsAndTopics } from "@/app/actions/subjects";
 import { getTopicMastery } from "@/lib/topicProgressStorage";
 import { BlockCard } from "@/components/routine/BlockCard";
 import { BlockEditorModal } from "@/components/routine/BlockEditorModal";
 import { RoutineCalendarModal } from "@/components/routine/RoutineCalendarModal";
 import { AiScheduleGeneratorModal } from "@/components/routine/AiScheduleGeneratorModal";
 import { TopicCompletionModal } from "@/components/routine/TopicCompletionModal";
-import { TopicMasteryModal } from "@/components/routine/TopicMasteryModal";
 
 /** Lightweight event-driven store for routine blocks (avoids useSyncExternalStore snapshot equality issues) */
 function useRoutineBlocks(): RoutineBlock[] {
@@ -73,41 +71,12 @@ export default function RoutinePage() {
 
   // AI & Mastery modals
   const [isAiGeneratorOpen, setIsAiGeneratorOpen] = useState(false);
-  const [isTopicMasteryOpen, setIsTopicMasteryOpen] = useState(false);
   const [completingStudyBlock, setCompletingStudyBlock] = useState<{
     id: string;
     subject: string;
     topic: string;
   } | null>(null);
   const [aiToast, setAiToast] = useState<{ summary: string } | null>(null);
-
-  // Subjects from DB or defaults
-  const [subjects, setSubjects] = useState<Array<{ name: string; topics: string[] }>>([
-    {
-      name: "Physics",
-      topics: ["Kinematics & Dynamics", "Thermodynamics", "Wave Optics", "Electromagnetism"],
-    },
-    {
-      name: "Chemistry",
-      topics: ["Organic Reaction Mechanisms", "Chemical Kinetics", "Coordination Compounds", "Periodic Trends"],
-    },
-    {
-      name: "Mathematics",
-      topics: ["Calculus & Integrals", "Differential Equations", "Vectors & 3D Geometry", "Probability"],
-    },
-    {
-      name: "Biology",
-      topics: ["Genetics & Heredity", "Human Physiology", "Cell Biology", "Ecology & Evolution"],
-    },
-  ]);
-
-  useEffect(() => {
-    getUserSubjectsAndTopics().then((res) => {
-      if (res && res.length > 0) {
-        setSubjects(res);
-      }
-    });
-  }, []);
 
   // Filter & sort blocks for the selected date
   const blocks = useMemo(() => {
@@ -535,13 +504,6 @@ export default function RoutinePage() {
             : 0
         }
         onConfirm={handleTopicCompletionConfirmed}
-      />
-
-      {/* Topic Mastery & Percentage Breakdown Modal */}
-      <TopicMasteryModal
-        isOpen={isTopicMasteryOpen}
-        onClose={() => setIsTopicMasteryOpen(false)}
-        subjects={subjects}
       />
 
       {/* Calendar Modal */}

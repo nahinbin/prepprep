@@ -1,16 +1,14 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import {
-  Send,
+  ArrowUp,
   Sparkles,
   Bot,
-  User,
   CheckCircle2,
   Calendar,
   Mic,
   MicOff,
-  Plus,
   Trash2,
   MessageSquare,
   PanelLeftClose,
@@ -20,6 +18,12 @@ import {
   X,
   Play,
   RotateCcw,
+  Copy,
+  ChevronDown,
+  Layers,
+  Clock,
+  BookOpen,
+  SquarePen,
 } from "lucide-react";
 import { AppShell, NavMenu } from "@/components/NavMenu";
 import {
@@ -29,8 +33,6 @@ import {
 } from "@/app/actions/ai-chat";
 import {
   getAiAssistantName,
-  getAiPermanentNotes,
-  setAiPermanentNotes,
   upsertBlock,
   generateBlockId,
   formatDateKey,
@@ -45,7 +47,7 @@ interface ChatSession {
   messages: ChatMessage[];
 }
 
-const CHAT_SESSIONS_KEY = "mcq_chat_sessions_v2";
+const CHAT_SESSIONS_KEY = "mcq_chat_sessions_v3";
 
 function loadSavedSessions(): ChatSession[] {
   if (typeof window === "undefined") return [];
@@ -72,8 +74,8 @@ function createWelcomeMessage(aiName: string): ChatMessage {
   return {
     id: "welcome",
     role: "assistant",
-    content: `👋 Hello! I'm **${aiName}**, your personal study coach.\n\nI can help you with anything:\n• **Generate MCQs**: Paste lecture notes or paragraphs and say *"Make MCQs from this"*\n• **Manage Routine**: Say *"Add a study block for Math at 3 PM"* or *"Build my schedule for today"*\n• **Remember Habits**: Say *"Remember that I have coaching on Wednesdays at 2:30 PM"*\n• **Explain Concepts**: Ask me anything in Math, Physics, Accounting, or Biology!`,
-    timestamp: Date.now(),
+    content: `👋 Hello! I'm **${aiName}**, your personal study coach.\n\nI can help you prepare for exams, master tricky topics, and organize your daily life:\n• **Generate MCQs**: Say *"Make 5 MCQs on Cell Division"* or paste your notes\n• **Plan Routine**: Say *"Build my schedule for today"* or *"Add a 2-hour Math block at 4 PM"*\n• **Remember Habits**: Say *"Remember that I have Physics coaching on Mondays at 3 PM"*\n• **Explain Topics**: Ask any question in Physics, Chemistry, Biology, Math, or Accounting!`,
+    timestamp: 0,
   };
 }
 
@@ -85,6 +87,118 @@ function createNewSession(aiName: string, customId?: string): ChatSession {
     updatedAt: now,
     messages: [createWelcomeMessage(aiName)],
   };
+}
+
+/**
+ * Format markdown text into clean styled JSX (Bolds, bullet lists, inline code, code blocks)
+ */
+function MarkdownText({ text }: { text: string }) {
+  const parts = text.split("\n");
+
+  return (
+    <div className="space-y-2 leading-7">
+      {parts.map((line, idx) => {
+        const trimmed = line.trim();
+
+        // Empty line
+        if (!trimmed) {
+          return <div key={idx} className="h-1.5" />;
+        }
+
+        // Heading 3: ### Heading
+        if (trimmed.startsWith("### ")) {
+          return (
+            <h3 key={idx} className="text-base font-bold text-white pt-2 pb-0.5">
+              {renderFormattedSpans(trimmed.slice(4))}
+            </h3>
+          );
+        }
+
+        // Heading 2: ## Heading
+        if (trimmed.startsWith("## ")) {
+          return (
+            <h2 key={idx} className="text-lg font-black text-white pt-3 pb-1 border-b border-white/10">
+              {renderFormattedSpans(trimmed.slice(3))}
+            </h2>
+          );
+        }
+
+        // Bullet point: • or - or *
+        if (
+          trimmed.startsWith("• ") ||
+          trimmed.startsWith("- ") ||
+          trimmed.startsWith("* ")
+        ) {
+          return (
+            <div key={idx} className="flex items-start gap-2.5 pl-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0 mt-2.5" />
+              <p className="flex-1 text-[#ececec]">
+                {renderFormattedSpans(trimmed.slice(2))}
+              </p>
+            </div>
+          );
+        }
+
+        // Numbered list: 1. 2. etc.
+        const numMatch = trimmed.match(/^(\d+)\.\s+(.*)$/);
+        if (numMatch) {
+          return (
+            <div key={idx} className="flex items-start gap-2 pl-1.5">
+              <span className="text-xs font-bold text-primary font-mono shrink-0 mt-1">
+                {numMatch[1]}.
+              </span>
+              <p className="flex-1 text-[#ececec]">
+                {renderFormattedSpans(numMatch[2])}
+              </p>
+            </div>
+          );
+        }
+
+        // Standard paragraph
+        return (
+          <p key={idx} className="text-[#ececec]">
+            {renderFormattedSpans(line)}
+          </p>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * Parses bold (**text**), italics (*text*), and inline code (`code`)
+ */
+function renderFormattedSpans(text: string) {
+  // Split on bold, italic, or code
+  const tokens = text.split(/(\*\*.*?\*\*|\*.*?\*|`.*?`)/g);
+
+  return tokens.map((tok, i) => {
+    if (tok.startsWith("**") && tok.endsWith("**") && tok.length >= 4) {
+      return (
+        <strong key={i} className="font-bold text-white">
+          {tok.slice(2, -2)}
+        </strong>
+      );
+    }
+    if (tok.startsWith("*") && tok.endsWith("*") && tok.length >= 2) {
+      return (
+        <em key={i} className="italic text-[#d4d4d4]">
+          {tok.slice(1, -1)}
+        </em>
+      );
+    }
+    if (tok.startsWith("`") && tok.endsWith("`") && tok.length >= 2) {
+      return (
+        <code
+          key={i}
+          className="px-1.5 py-0.5 rounded-md bg-[#2f2f2f] border border-white/10 text-xs font-mono text-emerald-400"
+        >
+          {tok.slice(1, -1)}
+        </code>
+      );
+    }
+    return tok;
+  });
 }
 
 export default function ChatPage() {
@@ -109,6 +223,7 @@ export default function ChatPage() {
   });
   const [input, setInput] = useState("");
   const [isSending, setIsSending] = useState(false);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   // Voice dictation state
   const [isListening, setIsListening] = useState(false);
@@ -122,11 +237,20 @@ export default function ChatPage() {
   const [quizCompleted, setQuizCompleted] = useState(false);
 
   const bottomRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isSending]);
+
+  // Auto resize textarea
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 180)}px`;
+    }
+  }, [input]);
 
   const persistMessages = (newMessages: ChatMessage[]) => {
     setMessages(newMessages);
@@ -153,7 +277,7 @@ export default function ChatPage() {
     });
   };
 
-  // 4. Voice Dictation Setup
+  // Voice Dictation Setup
   const toggleVoiceDictation = () => {
     if (isListening) {
       if (recognitionRef.current) {
@@ -163,74 +287,48 @@ export default function ChatPage() {
       return;
     }
 
-    if (
-      typeof window === "undefined" ||
-      (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window))
-    ) {
-      alert("Voice speech recognition is not supported in this browser. Please use Google Chrome or Edge.");
+    const SpeechRecognition =
+      (window as unknown as { SpeechRecognition?: unknown; webkitSpeechRecognition?: unknown })
+        .SpeechRecognition ||
+      (window as unknown as { SpeechRecognition?: unknown; webkitSpeechRecognition?: unknown })
+        .webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+      alert("Voice dictation is not supported by your browser. Please use Chrome, Edge, or Safari.");
       return;
     }
 
     try {
-      const windowObj = window as unknown as {
-        SpeechRecognition?: new () => {
-          continuous: boolean;
-          interimResults: boolean;
-          lang: string;
-          start: () => void;
-          stop: () => void;
-          onstart: () => void;
-          onresult: (e: {
-            resultIndex: number;
-            results: Array<Array<{ transcript: string }>>;
-          }) => void;
-          onerror: () => void;
-          onend: () => void;
-        };
-        webkitSpeechRecognition?: new () => {
-          continuous: boolean;
-          interimResults: boolean;
-          lang: string;
-          start: () => void;
-          stop: () => void;
-          onstart: () => void;
-          onresult: (e: {
-            resultIndex: number;
-            results: Array<Array<{ transcript: string }>>;
-          }) => void;
-          onerror: () => void;
-          onend: () => void;
-        };
-      };
+      const recognition = new (SpeechRecognition as new () => {
+        continuous: boolean;
+        interimResults: boolean;
+        lang: string;
+        onresult: (e: {
+          results: Array<{
+            [index: number]: { transcript: string };
+            isFinal: boolean;
+          }>;
+        }) => void;
+        onerror: (e: { error: string }) => void;
+        onend: () => void;
+        start: () => void;
+        stop: () => void;
+      })();
 
-      const SpeechRecognitionClass =
-        windowObj.SpeechRecognition || windowObj.webkitSpeechRecognition;
-
-      if (!SpeechRecognitionClass) {
-        alert("Speech recognition not supported in this browser.");
-        return;
-      }
-
-      const recognition = new SpeechRecognitionClass();
       recognition.continuous = true;
       recognition.interimResults = true;
       recognition.lang = "en-US";
 
-      recognition.onstart = () => {
-        setIsListening(true);
-      };
-
       recognition.onresult = (event) => {
         let transcript = "";
-        for (let i = event.resultIndex; i < event.results.length; i++) {
+        for (let i = 0; i < event.results.length; i++) {
           transcript += event.results[i][0].transcript;
         }
-        if (transcript.trim()) {
-          setInput((prev) => (prev ? `${prev} ${transcript.trim()}` : transcript.trim()));
-        }
+        setInput(transcript);
       };
 
-      recognition.onerror = () => {
+      recognition.onerror = (e) => {
+        console.error("Speech recognition error:", e.error);
         setIsListening(false);
       };
 
@@ -238,18 +336,19 @@ export default function ChatPage() {
         setIsListening(false);
       };
 
-      recognitionRef.current = recognition;
       recognition.start();
-    } catch (e) {
-      console.error("Speech recognition error:", e);
+      recognitionRef.current = recognition;
+      setIsListening(true);
+    } catch (err) {
+      console.error("Failed to start voice dictation:", err);
       setIsListening(false);
     }
   };
 
-  // 5. Send Message Handler
-  const handleSend = async (textToSend?: string) => {
-    const text = (textToSend || input).trim();
-    if (!text || isSending) return;
+  // Send Message Handler
+  const handleSend = async (customPrompt?: string) => {
+    const textToSend = (customPrompt || input).trim();
+    if (!textToSend || isSending) return;
 
     if (isListening && recognitionRef.current) {
       recognitionRef.current.stop();
@@ -259,57 +358,52 @@ export default function ChatPage() {
     const userMsg: ChatMessage = {
       id: "usr_" + Date.now().toString(36),
       role: "user",
-      content: text,
+      content: textToSend,
       timestamp: Date.now(),
     };
 
     const newHistory = [...messages, userMsg];
     persistMessages(newHistory);
     setInput("");
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+    }
     setIsSending(true);
 
     try {
-      const history = messages
-        .filter((m) => m.role === "user" || m.role === "assistant")
-        .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
+      const historyPayload = newHistory.map((m) => ({
+        role: m.role === "system" ? ("assistant" as const) : m.role,
+        content: m.content,
+      }));
+      const res = await sendChatMessage(textToSend, historyPayload);
 
-      const reply = await sendChatMessage(text, history, {
-        aiName,
-        notepadNotes: getAiPermanentNotes(),
-      });
-
-      // Handle Agentic Action Execution on client
-      if (reply.actionTaken) {
-        if (reply.actionTaken.type === "added_block" && reply.actionTaken.blockData) {
-          const b = reply.actionTaken.blockData;
-          upsertBlock({
+      // Execute AI scheduled block if suggested
+      if (res.actionTaken?.type === "added_block" && res.actionTaken.blockData) {
+        try {
+          const rawBlock = res.actionTaken.blockData;
+          const newBlock = {
             id: generateBlockId(),
             date: formatDateKey(new Date()),
-            type: b.type,
-            title: b.title,
-            timeMode: b.startTime ? "single" : "anytime",
-            startTime: b.startTime,
-            endTime: b.endTime,
+            type: rawBlock.type || "study",
+            title: rawBlock.title || "Study Session",
+            timeMode: "range" as const,
+            startTime: rawBlock.startTime || "15:00",
+            endTime: rawBlock.endTime || "16:00",
             isCompleted: false,
-            subject: b.subject,
-            topic: b.topic,
-            notes: b.notes,
+            subject: rawBlock.subject,
+            topic: rawBlock.topic,
+            notes: rawBlock.notes,
+            subtasks: [],
             order: Date.now(),
             createdAt: Date.now(),
-          });
-        } else if (
-          reply.actionTaken.type === "updated_notepad" &&
-          reply.actionTaken.newNotepadText
-        ) {
-          const currentNotes = getAiPermanentNotes();
-          const merged = currentNotes
-            ? `${currentNotes}\n• ${reply.actionTaken.newNotepadText}`
-            : reply.actionTaken.newNotepadText;
-          setAiPermanentNotes(merged);
+          };
+          upsertBlock(newBlock);
+        } catch (e) {
+          console.warn("Failed to schedule routine block from chat:", e);
         }
       }
 
-      persistMessages([...newHistory, reply]);
+      persistMessages([...newHistory, res]);
     } catch (err) {
       console.error("Chat error:", err);
       persistMessages([
@@ -317,7 +411,7 @@ export default function ChatPage() {
         {
           id: "err_" + Date.now().toString(36),
           role: "assistant",
-          content: "Sorry, I had trouble processing that. Please try again!",
+          content: "Sorry, I had trouble generating a response. Please check your connection and try again!",
           timestamp: Date.now(),
         },
       ]);
@@ -326,8 +420,8 @@ export default function ChatPage() {
     }
   };
 
-  // 6. Session Management
-  const handleNewChat = () => {
+  // Session Management
+  const handleNewChat = useCallback(() => {
     const newSession = createNewSession(aiName);
 
     setSessions((prev) => {
@@ -340,7 +434,7 @@ export default function ChatPage() {
     setMessages(newSession.messages);
     setIsTemporaryChat(false);
     setSidebarOpen(false);
-  };
+  }, [aiName]);
 
   const handleSelectSession = (id: string) => {
     const found = sessions.find((s) => s.id === id);
@@ -368,7 +462,14 @@ export default function ChatPage() {
     }
   };
 
-  // 7. Interactive Practice Quiz Handlers
+  // Copy Message Content to Clipboard
+  const handleCopyMessage = (id: string, content: string) => {
+    navigator.clipboard.writeText(content);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  // Interactive Practice Quiz Handlers
   const handleStartQuiz = (quiz: GeneratedQuiz) => {
     setActiveQuiz(quiz);
     setCurrentQuizIndex(0);
@@ -404,40 +505,46 @@ export default function ChatPage() {
     }
   };
 
+  // Check if current conversation is in the initial welcome state
+  const isInitialState = messages.length <= 1 && !messages.some((m) => m.role === "user");
+
   return (
     <AppShell showBottomBar={false}>
-      <div className="relative flex h-[100dvh] w-full overflow-hidden bg-background">
+      <div className="relative flex h-[100dvh] w-full overflow-hidden bg-[#212121] text-white">
         {/* ================================================================= */}
-        {/*  CHATGPT / GEMINI STYLE SIDEBAR (Sessions & History)             */}
+        {/*  CHATGPT SIDEBAR (Sessions & History)                            */}
         {/* ================================================================= */}
         <aside
-          className={`fixed inset-y-0 left-0 z-50 w-72 bg-card border-r border-white/10 flex flex-col transition-transform duration-300 md:relative md:translate-x-0 ${
+          className={`fixed inset-y-0 left-0 z-50 w-64 sm:w-72 bg-[#171717] border-r border-[#2f2f2f]/80 flex flex-col transition-transform duration-300 md:relative md:translate-x-0 ${
             sidebarOpen ? "translate-x-0 shadow-2xl" : "-translate-x-full"
           }`}
         >
-          {/* Sidebar Top: New Chat + Close button on mobile */}
-          <div className="p-4 border-b border-white/5 flex items-center justify-between gap-2">
+          {/* Sidebar Top: New Chat + Close icon on mobile */}
+          <div className="p-3.5 border-b border-[#2f2f2f]/60 flex items-center justify-between gap-2">
             <button
               onClick={handleNewChat}
-              className="flex-1 py-2.5 px-3.5 rounded-2xl bg-gradient-to-r from-violet-600 to-primary text-white font-bold text-xs flex items-center justify-center gap-2 shadow-md shadow-violet-600/25 hover:brightness-110 active:scale-95 transition-all"
+              className="flex-1 py-2 px-3 rounded-lg hover:bg-[#212121] text-[#ececec] font-medium text-sm flex items-center justify-between border border-[#2f2f2f] hover:border-[#3f3f3f] transition-all"
             >
-              <Plus className="w-4 h-4 stroke-[2.5]" />
-              <span>New Chat</span>
+              <div className="flex items-center gap-2">
+                <SquarePen className="w-4 h-4 text-primary" />
+                <span>New chat</span>
+              </div>
+              <span className="text-[10px] text-neutral-400 font-mono">Ctrl+K</span>
             </button>
 
             <button
               onClick={() => setSidebarOpen(false)}
-              className="md:hidden w-9 h-9 rounded-xl hover:bg-white/10 text-muted-foreground hover:text-foreground flex items-center justify-center transition-colors"
+              className="md:hidden w-8 h-8 rounded-lg hover:bg-[#2f2f2f] text-neutral-400 hover:text-white flex items-center justify-center transition-colors"
             >
               <X className="w-5 h-5" />
             </button>
           </div>
 
           {/* Temporary Chat Toggle (Incognito / Not saved) */}
-          <div className="px-4 py-2 border-b border-white/5 flex items-center justify-between">
-            <span className="text-[11px] font-semibold text-muted-foreground flex items-center gap-1.5">
+          <div className="px-3.5 py-2.5 border-b border-[#2f2f2f]/40 flex items-center justify-between">
+            <span className="text-xs font-medium text-neutral-300 flex items-center gap-1.5">
               <Flame className="w-3.5 h-3.5 text-amber-400" />
-              Temporary Chat
+              Temporary chat
             </span>
             <button
               type="button"
@@ -448,14 +555,14 @@ export default function ChatPage() {
                     {
                       id: "temp_start",
                       role: "assistant",
-                      content: `🔥 **Temporary Chat activated.** Messages in this session will not be saved to your history.`,
-                      timestamp: Date.now(),
+                      content: `🔥 **Temporary chat enabled.** Messages will not be saved to your history.`,
+                      timestamp: 0,
                     },
                   ]);
                 }
               }}
               className={`w-9 h-5 rounded-full transition-colors relative ${
-                isTemporaryChat ? "bg-amber-500" : "bg-white/10"
+                isTemporaryChat ? "bg-amber-500" : "bg-[#2f2f2f]"
               }`}
             >
               <span
@@ -467,29 +574,29 @@ export default function ChatPage() {
           </div>
 
           {/* Sessions List */}
-          <div className="flex-1 overflow-y-auto p-3 space-y-1">
-            <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground px-2 mb-1 block">
-              Recent Chats
+          <div className="flex-1 overflow-y-auto p-2 space-y-0.5">
+            <span className="text-[11px] font-semibold text-neutral-400 px-2.5 pt-2 pb-1 block">
+              Recent chats
             </span>
 
             {sessions.map((s) => (
               <div
                 key={s.id}
                 onClick={() => handleSelectSession(s.id)}
-                className={`group flex items-center justify-between px-3 py-2.5 rounded-xl cursor-pointer text-xs font-semibold transition-all ${
+                className={`group flex items-center justify-between px-3 py-2 rounded-lg cursor-pointer text-sm transition-all ${
                   activeSessionId === s.id && !isTemporaryChat
-                    ? "bg-primary/15 text-primary border border-primary/25"
-                    : "text-muted-foreground hover:text-foreground hover:bg-white/5"
+                    ? "bg-[#212121] text-white font-medium"
+                    : "text-[#b4b4b4] hover:text-white hover:bg-[#212121]/60"
                 }`}
               >
                 <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                  <MessageSquare className="w-3.5 h-3.5 shrink-0 opacity-70" />
-                  <span className="truncate">{s.title || "Chat Session"}</span>
+                  <MessageSquare className="w-3.5 h-3.5 shrink-0 opacity-60" />
+                  <span className="truncate">{s.title || "New Chat"}</span>
                 </div>
 
                 <button
                   onClick={(e) => handleDeleteSession(s.id, e)}
-                  className="opacity-0 group-hover:opacity-100 p-1 hover:text-danger rounded-lg transition-all"
+                  className="opacity-0 group-hover:opacity-100 p-1 hover:text-red-400 rounded transition-all"
                   title="Delete chat"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
@@ -499,42 +606,49 @@ export default function ChatPage() {
           </div>
 
           {/* Sidebar Bottom Nav Links */}
-          <div className="p-3 border-t border-white/5 space-y-1">
+          <div className="p-3 border-t border-[#2f2f2f]/60 space-y-1">
             <Link
               href="/routine"
-              className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold text-muted-foreground hover:text-foreground hover:bg-white/5 transition-all"
+              className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium text-neutral-300 hover:text-white hover:bg-[#212121] transition-all"
             >
               <Calendar className="w-4 h-4 text-primary" />
               <span>Daily Routine</span>
             </Link>
             <Link
               href="/routine/settings"
-              className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold text-muted-foreground hover:text-foreground hover:bg-white/5 transition-all"
+              className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium text-neutral-300 hover:text-white hover:bg-[#212121] transition-all"
             >
               <Bot className="w-4 h-4 text-violet-400" />
               <span>AI Settings & Name</span>
             </Link>
+            <Link
+              href="/subjects/progress"
+              className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium text-neutral-300 hover:text-white hover:bg-[#212121] transition-all"
+            >
+              <BookOpen className="w-4 h-4 text-emerald-400" />
+              <span>Completed Topics</span>
+            </Link>
           </div>
         </aside>
 
-        {/* Sidebar Overlay for mobile */}
+        {/* Sidebar Backdrop on Mobile */}
         {sidebarOpen && (
           <div
-            className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm md:hidden"
+            className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm md:hidden"
             onClick={() => setSidebarOpen(false)}
           />
         )}
 
         {/* ================================================================= */}
-        {/*  MAIN CHAT CONTAINER (ChatGPT / Claude Clean Modern View)         */}
+        {/*  MAIN CHAT CANVAS (Pure ChatGPT Aesthetic)                       */}
         {/* ================================================================= */}
-        <div className="flex-1 flex flex-col h-full min-w-0">
-          {/* Top Header Bar */}
-          <header className="h-14 px-4 border-b border-white/5 flex items-center justify-between shrink-0">
-            <div className="flex items-center gap-2.5">
+        <div className="flex-1 flex flex-col h-full min-w-0 bg-[#212121]">
+          {/* Top Bar */}
+          <header className="h-14 px-4 flex items-center justify-between shrink-0 border-b border-transparent">
+            <div className="flex items-center gap-2">
               <button
                 onClick={() => setSidebarOpen(!sidebarOpen)}
-                className="w-9 h-9 rounded-xl hover:bg-white/10 text-muted-foreground hover:text-foreground flex items-center justify-center transition-colors"
+                className="w-9 h-9 rounded-lg hover:bg-[#2f2f2f] text-neutral-400 hover:text-white flex items-center justify-center transition-colors"
                 aria-label="Toggle Sidebar"
               >
                 {sidebarOpen ? (
@@ -544,158 +658,266 @@ export default function ChatPage() {
                 )}
               </button>
 
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-black text-foreground">
+              {/* Model Dropdown Pill */}
+              <div className="flex items-center gap-1.5 px-3 py-1 rounded-xl hover:bg-[#2f2f2f] cursor-pointer transition-colors group">
+                <span className="text-base font-semibold text-white">
                   {aiName}
                 </span>
-                <span className="text-[10px] font-black uppercase tracking-wider bg-violet-500/20 text-violet-300 border border-violet-500/30 px-2 py-0.5 rounded-full">
-                  AI Study Coach
+                <span className="text-xs text-neutral-400 font-medium">
+                  3.5 Flash
                 </span>
+                <ChevronDown className="w-3.5 h-3.5 text-neutral-400 group-hover:text-white transition-colors" />
               </div>
             </div>
 
             <div className="flex items-center gap-2">
-              <Link
-                href="/routine"
-                className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-bold text-muted-foreground hover:text-foreground transition-colors"
+              <button
+                onClick={handleNewChat}
+                className="w-9 h-9 rounded-lg hover:bg-[#2f2f2f] text-neutral-400 hover:text-white flex items-center justify-center transition-colors"
+                title="New chat"
               >
-                <Calendar className="w-3.5 h-3.5 text-primary" />
-                <span>Routine</span>
-              </Link>
+                <SquarePen className="w-5 h-5" />
+              </button>
               <NavMenu />
             </div>
           </header>
 
-          {/* Messages Scroll Area */}
-          <div className="flex-1 overflow-y-auto px-4 py-6 max-w-3xl w-full mx-auto space-y-6">
-            {messages.map((m) => {
-              const isUser = m.role === "user";
-
-              return (
-                <div
-                  key={m.id}
-                  className={`flex gap-3 items-start ${isUser ? "flex-row-reverse" : "flex-row"}`}
-                >
-                  {/* Avatar */}
-                  <div
-                    className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
-                      isUser
-                        ? "bg-primary text-white shadow-md shadow-primary/20"
-                        : "bg-violet-600/20 text-violet-300 border border-violet-500/30"
-                    }`}
-                  >
-                    {isUser ? <User className="w-4 h-4" /> : <Sparkles className="w-4 h-4" />}
+          {/* Messages or Welcome Center Screen */}
+          <div className="flex-1 overflow-y-auto px-4 py-4 w-full">
+            <div className="max-w-3xl w-full mx-auto min-h-full flex flex-col justify-between">
+              {isInitialState ? (
+                /* =========================================================== */
+                /*  SIGNATURE CHATGPT WELCOME / EMPTY STATE                   */
+                /* =========================================================== */
+                <div className="flex-1 flex flex-col items-center justify-center py-10 px-2 animate-in fade-in duration-300">
+                  <div className="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center mb-6 text-primary shadow-lg shadow-black/20">
+                    <Sparkles className="w-6 h-6" />
                   </div>
 
-                  {/* Bubble */}
-                  <div
-                    className={`max-w-[85%] rounded-3xl p-4 text-sm leading-relaxed ${
-                      isUser
-                        ? "bg-primary text-primary-foreground font-semibold rounded-tr-sm"
-                        : "bg-card border border-white/10 text-foreground font-medium rounded-tl-sm shadow-md"
-                    }`}
-                  >
-                    <p className="whitespace-pre-wrap">{m.content}</p>
+                  <h1 className="text-2xl sm:text-3xl font-semibold text-white tracking-tight text-center mb-8">
+                    What can I help with today?
+                  </h1>
 
-                    {/* Interactive Quiz Launcher Card */}
-                    {m.generatedQuiz && (
-                      <div className="mt-3.5 p-3.5 rounded-2xl bg-violet-950/30 border border-violet-500/40 space-y-2.5 animate-in fade-in duration-200">
-                        <div className="flex items-center justify-between">
-                          <span className="text-[11px] font-black uppercase tracking-wider text-violet-300 flex items-center gap-1">
-                            <Sparkles className="w-3.5 h-3.5" />
-                            Practice Quiz Ready
-                          </span>
-                          <span className="text-xs font-bold text-muted-foreground">
-                            {m.generatedQuiz.questions.length} Questions
-                          </span>
+                  {/* 2x2 Clean Suggestion Cards */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-2xl">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleSend(
+                          "Build my study schedule for today. Balance my study sessions with breaks."
+                        )
+                      }
+                      className="p-4 rounded-2xl bg-[#2f2f2f]/60 hover:bg-[#2f2f2f] border border-white/5 hover:border-white/15 text-left transition-all active:scale-[0.99] group shadow-sm"
+                    >
+                      <div className="flex items-center gap-2 mb-1.5 text-primary">
+                        <Clock className="w-4 h-4" />
+                        <span className="text-sm font-semibold text-white">
+                          Build Daily Routine
+                        </span>
+                      </div>
+                      <p className="text-xs text-neutral-400 group-hover:text-neutral-300">
+                        Create an optimized schedule with study blocks & breaks
+                      </p>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleSend(
+                          "Generate 5 high-yield practice MCQs with explanations on Cell Division."
+                        )
+                      }
+                      className="p-4 rounded-2xl bg-[#2f2f2f]/60 hover:bg-[#2f2f2f] border border-white/5 hover:border-white/15 text-left transition-all active:scale-[0.99] group shadow-sm"
+                    >
+                      <div className="flex items-center gap-2 mb-1.5 text-violet-400">
+                        <Layers className="w-4 h-4" />
+                        <span className="text-sm font-semibold text-white">
+                          Generate Practice MCQs
+                        </span>
+                      </div>
+                      <p className="text-xs text-neutral-400 group-hover:text-neutral-300">
+                        Interactive practice quiz with instant scoring
+                      </p>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleSend(
+                          "Explain Quantum Superposition and Schrödinger's Cat in simple intuitive terms."
+                        )
+                      }
+                      className="p-4 rounded-2xl bg-[#2f2f2f]/60 hover:bg-[#2f2f2f] border border-white/5 hover:border-white/15 text-left transition-all active:scale-[0.99] group shadow-sm"
+                    >
+                      <div className="flex items-center gap-2 mb-1.5 text-emerald-400">
+                        <BookOpen className="w-4 h-4" />
+                        <span className="text-sm font-semibold text-white">
+                          Explain Any Concept
+                        </span>
+                      </div>
+                      <p className="text-xs text-neutral-400 group-hover:text-neutral-300">
+                        Break down tough physics or math concepts easily
+                      </p>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleSend(
+                          "Remember that I have Physics coaching every Wednesday from 3:00 PM to 5:00 PM."
+                        )
+                      }
+                      className="p-4 rounded-2xl bg-[#2f2f2f]/60 hover:bg-[#2f2f2f] border border-white/5 hover:border-white/15 text-left transition-all active:scale-[0.99] group shadow-sm"
+                    >
+                      <div className="flex items-center gap-2 mb-1.5 text-amber-400">
+                        <Bot className="w-4 h-4" />
+                        <span className="text-sm font-semibold text-white">
+                          Save Routine Memory
+                        </span>
+                      </div>
+                      <p className="text-xs text-neutral-400 group-hover:text-neutral-300">
+                        Teach your AI habits, coaching times & commitments
+                      </p>
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                /* =========================================================== */
+                /*  CONVERSATION MESSAGES STREAM (ChatGPT Document Style)     */
+                /* =========================================================== */
+                <div className="space-y-6 pt-2 pb-6">
+                  {messages.map((m) => {
+                    const isUser = m.role === "user";
+
+                    if (isUser) {
+                      return (
+                        <div key={m.id} className="flex justify-end">
+                          <div className="max-w-[85%] sm:max-w-[70%] bg-[#2f2f2f] text-white px-5 py-3 rounded-[24px] text-[15px] leading-relaxed shadow-sm">
+                            <p className="whitespace-pre-wrap">{m.content}</p>
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    // Assistant message: Clean flat document layout without chunky box borders
+                    return (
+                      <div key={m.id} className="group flex gap-3 items-start w-full">
+                        {/* Circular AI Avatar */}
+                        <div className="w-7 h-7 rounded-full bg-white/10 border border-white/10 flex items-center justify-center shrink-0 mt-0.5 text-primary">
+                          <Sparkles className="w-4 h-4" />
                         </div>
 
-                        <h4 className="text-sm font-black text-foreground">
-                          {m.generatedQuiz.title}
-                        </h4>
+                        {/* Text and Actions */}
+                        <div className="flex-1 min-w-0 space-y-3">
+                          <MarkdownText text={m.content} />
 
-                        <button
-                          type="button"
-                          onClick={() => handleStartQuiz(m.generatedQuiz!)}
-                          className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-violet-600 to-primary hover:brightness-110 text-white font-black text-xs flex items-center justify-center gap-2 shadow-md shadow-violet-600/30 transition-all active:scale-95"
-                        >
-                          <Play className="w-3.5 h-3.5 fill-current" />
-                          <span>Start Practice Quiz Now</span>
-                        </button>
-                      </div>
-                    )}
+                          {/* Interactive Practice Quiz Launcher Card */}
+                          {m.generatedQuiz && (
+                            <div className="mt-3 p-4 rounded-2xl bg-[#171717] border border-white/10 space-y-3 max-w-lg">
+                              <div className="flex items-center justify-between">
+                                <span className="text-[11px] font-bold uppercase tracking-wider text-violet-400 flex items-center gap-1.5">
+                                  <Sparkles className="w-3.5 h-3.5" />
+                                  Interactive Quiz Ready
+                                </span>
+                                <span className="text-xs font-medium text-neutral-400">
+                                  {m.generatedQuiz.questions.length} Questions
+                                </span>
+                              </div>
 
-                    {/* Database Action Badges */}
-                    {m.actionTaken?.type === "added_topics" && (
-                      <div className="mt-3 pt-3 border-t border-white/10 flex items-center justify-between gap-2">
-                        <span className="text-xs font-bold text-emerald-400 flex items-center gap-1">
-                          <CheckCircle2 className="w-3.5 h-3.5" />
-                          Database Updated
-                        </span>
-                        <Link
-                          href="/subjects"
-                          className="text-xs font-black text-primary hover:underline"
-                        >
-                          View Subjects →
-                        </Link>
-                      </div>
-                    )}
+                              <h4 className="text-sm font-bold text-white">
+                                {m.generatedQuiz.title}
+                              </h4>
 
-                    {m.actionTaken?.type === "added_block" && (
-                      <div className="mt-3 pt-3 border-t border-white/10 flex items-center justify-between gap-2">
-                        <span className="text-xs font-bold text-emerald-400 flex items-center gap-1">
-                          <CheckCircle2 className="w-3.5 h-3.5" />
-                          Routine Block Scheduled
-                        </span>
-                        <Link
-                          href="/routine"
-                          className="text-xs font-black text-primary hover:underline"
-                        >
-                          Open Routine →
-                        </Link>
-                      </div>
-                    )}
+                              <button
+                                type="button"
+                                onClick={() => handleStartQuiz(m.generatedQuiz!)}
+                                className="w-full py-2.5 px-4 rounded-xl bg-white text-black font-semibold text-xs flex items-center justify-center gap-2 hover:bg-neutral-200 active:scale-95 transition-all shadow-md"
+                              >
+                                <Play className="w-3.5 h-3.5 fill-current" />
+                                <span>Start Practice Quiz</span>
+                              </button>
+                            </div>
+                          )}
 
-                    {m.actionTaken?.type === "updated_notepad" && (
-                      <div className="mt-3 pt-3 border-t border-white/10 flex items-center justify-between gap-2">
-                        <span className="text-xs font-bold text-emerald-400 flex items-center gap-1">
-                          <CheckCircle2 className="w-3.5 h-3.5" />
-                          Notepad Saved
-                        </span>
-                        <Link
-                          href="/routine/settings"
-                          className="text-xs font-black text-primary hover:underline"
-                        >
-                          View in Settings →
-                        </Link>
+                          {/* Agentic Action Feedback Tags */}
+                          {m.actionTaken?.type === "added_block" && (
+                            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-400">
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              <span>Routine block added to today</span>
+                              <Link
+                                href="/routine"
+                                className="font-bold underline hover:text-emerald-300 ml-1"
+                              >
+                                View Routine →
+                              </Link>
+                            </div>
+                          )}
+
+                          {m.actionTaken?.type === "updated_notepad" && (
+                            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-violet-500/10 border border-violet-500/20 text-xs text-violet-300">
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              <span>Memory saved in routine notepad</span>
+                              <Link
+                                href="/routine/settings"
+                                className="font-bold underline hover:text-violet-200 ml-1"
+                              >
+                                Open Settings →
+                              </Link>
+                            </div>
+                          )}
+
+                          {/* ChatGPT Style Copy Button Action Bar */}
+                          <div className="pt-1 flex items-center gap-2 opacity-60 group-hover:opacity-100 transition-opacity">
+                            <button
+                              type="button"
+                              onClick={() => handleCopyMessage(m.id, m.content)}
+                              className="p-1 rounded hover:bg-white/5 text-neutral-400 hover:text-white transition-colors text-xs flex items-center gap-1"
+                              title="Copy response"
+                            >
+                              {copiedId === m.id ? (
+                                <>
+                                  <Check className="w-3.5 h-3.5 text-emerald-400" />
+                                  <span className="text-[11px] text-emerald-400">Copied</span>
+                                </>
+                              ) : (
+                                <Copy className="w-3.5 h-3.5" />
+                              )}
+                            </button>
+                          </div>
+                        </div>
                       </div>
-                    )}
-                  </div>
+                    );
+                  })}
+
+                  {/* Thinking / Streaming Indicator */}
+                  {isSending && (
+                    <div className="flex gap-3 items-center">
+                      <div className="w-7 h-7 rounded-full bg-white/10 border border-white/10 flex items-center justify-center shrink-0 text-primary">
+                        <Sparkles className="w-4 h-4 animate-spin" />
+                      </div>
+                      <div className="flex items-center gap-1.5 text-neutral-400 text-sm">
+                        <span className="inline-block w-2 h-2 rounded-full bg-neutral-400 animate-pulse" />
+                        <span className="inline-block w-2 h-2 rounded-full bg-neutral-400 animate-pulse delay-150" />
+                        <span className="inline-block w-2 h-2 rounded-full bg-neutral-400 animate-pulse delay-300" />
+                      </div>
+                    </div>
+                  )}
+
+                  <div ref={bottomRef} />
                 </div>
-              );
-            })}
-
-            {isSending && (
-              <div className="flex gap-3 items-center">
-                <div className="w-8 h-8 rounded-xl bg-violet-600/20 text-violet-300 flex items-center justify-center border border-violet-500/30">
-                  <Sparkles className="w-4 h-4 animate-spin" />
-                </div>
-                <div className="p-3.5 rounded-2xl bg-card border border-white/10 text-xs font-bold text-muted-foreground animate-pulse">
-                  {aiName} is thinking...
-                </div>
-              </div>
-            )}
-
-            <div ref={bottomRef} />
+              )}
+            </div>
           </div>
 
-          {/* Bottom Input Area (Modern ChatGPT Pill Bar with Voice Dictation) */}
+          {/* ================================================================= */}
+          {/*  CHATGPT SIGNATURE FLOATING INPUT BAR                            */}
+          {/* ================================================================= */}
           <div className="p-4 max-w-3xl w-full mx-auto shrink-0">
-            {/* Listening indicator */}
+            {/* Listening State Banner */}
             {isListening && (
-              <div className="mb-2 flex items-center justify-center gap-2 text-xs font-bold text-danger animate-pulse">
-                <span className="w-2.5 h-2.5 rounded-full bg-danger" />
-                Listening to your voice... Speak now
+              <div className="mb-2 flex items-center justify-center gap-2 text-xs font-semibold text-rose-400 animate-pulse">
+                <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
+                <span>Listening to your voice... Speak now</span>
               </div>
             )}
 
@@ -704,47 +926,62 @@ export default function ChatPage() {
                 e.preventDefault();
                 handleSend();
               }}
-              className="flex items-center gap-2 p-1.5 rounded-3xl bg-card border border-white/10 shadow-xl focus-within:border-primary transition-all"
+              className="relative rounded-[26px] bg-[#2f2f2f] border border-white/10 shadow-2xl focus-within:border-white/20 transition-all p-2 pl-4"
             >
-              {/* Voice Dictation Mic Button */}
-              <button
-                type="button"
-                onClick={toggleVoiceDictation}
-                className={`w-10 h-10 rounded-2xl flex items-center justify-center transition-all ${
-                  isListening
-                    ? "bg-danger text-white animate-pulse"
-                    : "text-muted-foreground hover:text-foreground hover:bg-white/5"
-                }`}
-                title={isListening ? "Stop listening" : "Voice dictation (Speech to text)"}
-                aria-label="Voice dictation"
-              >
-                {isListening ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
-              </button>
+              <div className="flex items-end gap-2">
+                {/* Voice Dictation Mic Button */}
+                <button
+                  type="button"
+                  onClick={toggleVoiceDictation}
+                  className={`w-8 h-8 rounded-full flex items-center justify-center transition-all mb-0.5 ${
+                    isListening
+                      ? "bg-rose-500 text-white animate-pulse"
+                      : "text-neutral-400 hover:text-white hover:bg-white/5"
+                  }`}
+                  title={isListening ? "Stop listening" : "Voice dictation (Speech to text)"}
+                  aria-label="Voice dictation"
+                >
+                  {isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+                </button>
 
-              <input
-                type="text"
-                placeholder={`Ask ${aiName}, paste notes to make MCQs, or say 'Add block' ...`}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                disabled={isSending}
-                className="flex-1 px-2 py-2 bg-transparent text-foreground placeholder:text-muted-foreground text-sm font-medium focus:outline-none"
-              />
+                {/* Multiline auto-expanding textarea */}
+                <textarea
+                  ref={textareaRef}
+                  rows={1}
+                  placeholder={`Message ${aiName}...`}
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSend();
+                    }
+                  }}
+                  disabled={isSending}
+                  className="flex-1 max-h-44 bg-transparent text-white placeholder:text-neutral-400 text-sm font-normal resize-none focus:outline-none py-1.5 leading-6"
+                />
 
-              <button
-                type="submit"
-                disabled={isSending || !input.trim()}
-                className="w-10 h-10 rounded-2xl bg-primary text-primary-foreground flex items-center justify-center shadow-md shadow-primary/25 hover:brightness-110 active:scale-95 transition-all disabled:opacity-40 disabled:pointer-events-none"
-                aria-label="Send"
-              >
-                <Send className="w-4 h-4" />
-              </button>
+                {/* Circular Send Arrow Button */}
+                <button
+                  type="submit"
+                  disabled={isSending || !input.trim()}
+                  className="w-8 h-8 rounded-full bg-white text-black flex items-center justify-center hover:bg-neutral-200 active:scale-95 transition-all disabled:bg-[#3f3f3f] disabled:text-[#8e8e8e] disabled:cursor-not-allowed mb-0.5 shrink-0 shadow-sm"
+                  aria-label="Send"
+                >
+                  <ArrowUp className="w-4 h-4 stroke-[2.5]" />
+                </button>
+              </div>
             </form>
+
+            <p className="text-[11px] text-neutral-400 text-center mt-2 font-normal">
+              {aiName} can make mistakes. Verify important academic information.
+            </p>
           </div>
         </div>
       </div>
 
       {/* =================================================================== */}
-      {/*  INTERACTIVE MCQ PRACTICE MODAL (Launched directly from chat!)      */}
+      {/*  INTERACTIVE MCQ PRACTICE MODAL (Instant Quiz Launcher)             */}
       {/* =================================================================== */}
       {activeQuiz && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -753,20 +990,20 @@ export default function ChatPage() {
             onClick={() => setActiveQuiz(null)}
           />
 
-          <div className="relative w-full max-w-lg rounded-3xl bg-card border border-white/10 shadow-2xl p-6 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+          <div className="relative w-full max-w-lg rounded-3xl bg-[#1e1e1e] border border-white/15 shadow-2xl p-6 overflow-hidden animate-in fade-in zoom-in-95 duration-200 text-white">
             {/* Header */}
-            <div className="flex items-center justify-between pb-3 border-b border-white/5 mb-4">
+            <div className="flex items-center justify-between pb-3 border-b border-white/10 mb-4">
               <div>
-                <span className="text-[10px] font-black uppercase tracking-wider text-violet-400">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-violet-400">
                   Interactive Practice Quiz
                 </span>
-                <h3 className="font-black text-lg text-foreground">
+                <h3 className="font-bold text-lg text-white">
                   {activeQuiz.title}
                 </h3>
               </div>
               <button
                 onClick={() => setActiveQuiz(null)}
-                className="w-8 h-8 rounded-xl hover:bg-white/10 text-muted-foreground hover:text-foreground flex items-center justify-center transition-colors"
+                className="w-8 h-8 rounded-lg hover:bg-white/10 text-neutral-400 hover:text-white flex items-center justify-center transition-colors"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -775,15 +1012,15 @@ export default function ChatPage() {
             {!quizCompleted ? (
               <div className="space-y-4">
                 {/* Progress */}
-                <div className="flex items-center justify-between text-xs font-bold text-muted-foreground">
+                <div className="flex items-center justify-between text-xs font-semibold text-neutral-400">
                   <span>
                     Question {currentQuizIndex + 1} of {activeQuiz.questions.length}
                   </span>
-                  <span className="text-primary font-black">Score: {quizScore}</span>
+                  <span className="text-primary font-bold">Score: {quizScore}</span>
                 </div>
 
                 {/* Question */}
-                <p className="text-sm sm:text-base font-bold text-foreground">
+                <p className="text-sm sm:text-base font-semibold text-white">
                   {activeQuiz.questions[currentQuizIndex].question}
                 </p>
 
@@ -792,13 +1029,13 @@ export default function ChatPage() {
                   {activeQuiz.questions[currentQuizIndex].options.map((opt, idx) => {
                     const isSelected = selectedOption === idx;
                     const isCorrect = idx === activeQuiz.questions[currentQuizIndex].answerIndex;
-                    let style = "bg-white/5 hover:bg-white/10 border-white/10 text-foreground";
+                    let style = "bg-white/5 hover:bg-white/10 border-white/10 text-neutral-200";
 
                     if (selectedOption !== null) {
                       if (isCorrect) {
                         style = "bg-emerald-500/20 border-emerald-500 text-emerald-300 font-bold";
                       } else if (isSelected) {
-                        style = "bg-danger/20 border-danger text-danger font-bold";
+                        style = "bg-rose-500/20 border-rose-500 text-rose-300 font-bold";
                       }
                     }
 
@@ -808,14 +1045,14 @@ export default function ChatPage() {
                         type="button"
                         disabled={selectedOption !== null}
                         onClick={() => handleSelectQuizOption(idx)}
-                        className={`w-full p-3 rounded-2xl border text-left text-xs sm:text-sm font-semibold transition-all flex items-center justify-between gap-2 ${style}`}
+                        className={`w-full p-3.5 rounded-xl border text-left text-xs sm:text-sm transition-all flex items-center justify-between gap-2 ${style}`}
                       >
                         <span>{opt}</span>
                         {selectedOption !== null && isCorrect && (
                           <Check className="w-4 h-4 text-emerald-400 shrink-0" />
                         )}
                         {selectedOption !== null && isSelected && !isCorrect && (
-                          <X className="w-4 h-4 text-danger shrink-0" />
+                          <X className="w-4 h-4 text-rose-400 shrink-0" />
                         )}
                       </button>
                     );
@@ -824,8 +1061,8 @@ export default function ChatPage() {
 
                 {/* Explanation */}
                 {selectedOption !== null && (
-                  <div className="p-3 rounded-xl bg-white/5 border border-white/5 text-xs text-muted-foreground space-y-1 animate-in fade-in duration-150">
-                    <span className="font-bold text-foreground block">Explanation:</span>
+                  <div className="p-3 rounded-xl bg-white/5 border border-white/5 text-xs text-neutral-300 space-y-1 animate-in fade-in duration-150">
+                    <span className="font-bold text-white block">Explanation:</span>
                     <p>{activeQuiz.questions[currentQuizIndex].explanation}</p>
                   </div>
                 )}
@@ -835,7 +1072,7 @@ export default function ChatPage() {
                   <button
                     type="button"
                     onClick={handleNextQuizQuestion}
-                    className="w-full py-3 px-4 rounded-xl bg-primary hover:brightness-110 text-primary-foreground font-black text-xs sm:text-sm transition-all"
+                    className="w-full py-3 px-4 rounded-xl bg-white text-black hover:bg-neutral-200 font-bold text-xs sm:text-sm transition-all"
                   >
                     {currentQuizIndex + 1 < activeQuiz.questions.length
                       ? "Next Question →"
@@ -846,14 +1083,14 @@ export default function ChatPage() {
             ) : (
               /* Quiz Finished View */
               <div className="text-center py-6 space-y-4">
-                <div className="w-16 h-16 rounded-3xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center mx-auto">
+                <div className="w-16 h-16 rounded-2xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center mx-auto">
                   <CheckCircle2 className="w-8 h-8" />
                 </div>
                 <div>
-                  <h4 className="text-xl font-black text-foreground">Quiz Completed!</h4>
-                  <p className="text-xs text-muted-foreground mt-1">
+                  <h4 className="text-xl font-bold text-white">Quiz Completed!</h4>
+                  <p className="text-xs text-neutral-400 mt-1">
                     You scored <span className="font-bold text-emerald-400">{quizScore}</span> out of{" "}
-                    <span className="font-bold">{activeQuiz.questions.length}</span>!
+                    <span className="font-bold text-white">{activeQuiz.questions.length}</span>!
                   </p>
                 </div>
 
@@ -861,14 +1098,14 @@ export default function ChatPage() {
                   <button
                     type="button"
                     onClick={() => handleStartQuiz(activeQuiz)}
-                    className="flex-1 py-2.5 px-3 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-bold text-foreground flex items-center justify-center gap-1.5 transition-colors"
+                    className="flex-1 py-2.5 px-3 rounded-xl bg-white/10 hover:bg-white/15 text-xs font-semibold text-white flex items-center justify-center gap-1.5 transition-colors"
                   >
                     <RotateCcw className="w-3.5 h-3.5" /> Retry
                   </button>
                   <button
                     type="button"
                     onClick={() => setActiveQuiz(null)}
-                    className="flex-1 py-2.5 px-3 rounded-xl bg-primary hover:brightness-110 text-primary-foreground text-xs font-black transition-colors"
+                    className="flex-1 py-2.5 px-3 rounded-xl bg-white text-black hover:bg-neutral-200 text-xs font-bold transition-colors"
                   >
                     Done
                   </button>
