@@ -4,6 +4,7 @@ import { useState } from "react";
 import { CheckCircle2, X, BookOpen } from "lucide-react";
 import { setTopicMastery } from "@/lib/topicProgressStorage";
 import { playCorrectSound, playTapSound } from "@/lib/gameSounds";
+import WakeSlider from "@/components/ui/WakeSlider";
 
 interface TopicCompletionModalProps {
   isOpen: boolean;
@@ -127,36 +128,62 @@ export function TopicCompletionModal({
             </span>
           </button>
 
-          {/* Partial Completion Buttons */}
-          <div className="p-3.5 rounded-2xl bg-white/5 border border-white/5 space-y-2">
+          {/* Interactive WakeSlider for Completion % */}
+          <div className="p-4 rounded-2xl bg-white/5 border border-white/5 space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-muted-foreground uppercase">
-                Partially Done (AI will schedule shorter time)
+                Adjust Topic Progress
               </span>
-              <span className="text-xs font-black text-primary">
+              <span className={`text-sm font-black tabular-nums ${selectedPercentage >= 100 ? "text-emerald-400" : "text-primary"}`}>
                 {selectedPercentage}%
               </span>
             </div>
 
-            <div className="grid grid-cols-3 gap-2">
-              {[25, 50, 75].map((pct) => (
+            <div className="py-1">
+              <WakeSlider
+                value={selectedPercentage}
+                min={0}
+                max={100}
+                step={5}
+                bars={28}
+                height={38}
+                restHeight={10}
+                gap={3}
+                fillColor={selectedPercentage >= 100 ? "#10b981" : "#8b5cf6"}
+                trackColor="#27272a"
+                crestColor={selectedPercentage >= 100 ? "#34d399" : "#c4b5fd"}
+                onChange={(pct) => setSelectedPercentage(pct)}
+              />
+            </div>
+
+            {/* Quick Snap Chips */}
+            <div className="flex items-center gap-1.5 pt-1">
+              {[25, 50, 75, 100].map((pct) => (
                 <button
                   key={pct}
                   type="button"
-                  onClick={() => {
-                    setSelectedPercentage(pct);
-                    handlePartialCompletion(pct);
-                  }}
-                  className={`py-2 px-3 rounded-xl text-xs font-bold transition-all ${
+                  onClick={() => setSelectedPercentage(pct)}
+                  className={`flex-1 py-1.5 px-2 rounded-xl text-xs font-bold transition-all ${
                     selectedPercentage === pct
-                      ? "bg-primary text-primary-foreground shadow-md shadow-primary/30"
+                      ? pct === 100
+                        ? "bg-emerald-500 text-white shadow-md shadow-emerald-500/30"
+                        : "bg-primary text-primary-foreground shadow-md shadow-primary/30"
                       : "bg-white/5 border border-white/10 text-foreground hover:bg-white/10"
                   }`}
                 >
-                  {pct}% Done
+                  {pct}%
                 </button>
               ))}
             </div>
+
+            {/* Commit Progress Button */}
+            <button
+              type="button"
+              onClick={() => handlePartialCompletion(selectedPercentage)}
+              className="w-full py-2.5 px-3 rounded-xl bg-primary hover:brightness-110 text-primary-foreground text-xs font-black transition-all shadow-md active:scale-95"
+            >
+              Save {selectedPercentage}% Progress
+            </button>
           </div>
 
           {/* Just Session Done Button */}

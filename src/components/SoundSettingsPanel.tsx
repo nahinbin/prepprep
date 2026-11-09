@@ -44,6 +44,7 @@ import {
   playSoundKind,
   playTapSound,
 } from "@/lib/gameSounds";
+import WakeSlider from "@/components/ui/WakeSlider";
 
 const SFX_CONFIG: { kind: GameSoundKind; label: string; desc: string }[] = [
   {
@@ -123,12 +124,24 @@ export function SoundSettingsPanel() {
   }
 
   useEffect(() => {
-    setSettings(getSoundSettings());
-    void refreshLibrary();
-    return subscribeSoundSettings(() => {
-      setSettings(getSoundSettings());
-      applySoundEngineFromSettings();
+    let active = true;
+    Promise.all([listCustomHomeTracks(), listCustomSfxOverrides()]).then(([tracks, overrides]) => {
+      if (active) {
+        setCustomTracks(tracks);
+        setSfxOverrides(overrides);
+        void applySoundEngineFromSettings();
+      }
     });
+
+    const unsub = subscribeSoundSettings(() => {
+      setSettings(getSoundSettings());
+      void applySoundEngineFromSettings();
+    });
+
+    return () => {
+      active = false;
+      unsub();
+    };
   }, []);
 
   // Cleanup preview audio on unmount
@@ -743,17 +756,22 @@ function VolumeSliderWithPresets({
         </span>
       </div>
 
-      <input
-        type="range"
-        min={0}
-        max={100}
-        step={1}
-        disabled={disabled}
-        value={currentPct}
-        data-sfx="none"
-        onChange={(e) => onChange(Number(e.target.value) / 100)}
-        className="w-full accent-primary h-2 bg-muted rounded-lg cursor-pointer"
-      />
+      <div className="py-1">
+        <WakeSlider
+          value={currentPct}
+          min={0}
+          max={100}
+          step={1}
+          bars={32}
+          height={38}
+          restHeight={10}
+          gap={3}
+          fillColor="#8b5cf6"
+          trackColor="#27272a"
+          disabled={disabled}
+          onChange={(val) => onChange(val / 100)}
+        />
+      </div>
 
       {/* Quick percentage buttons */}
       <div className="flex items-center justify-between gap-1 pt-0.5">

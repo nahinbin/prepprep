@@ -22,6 +22,7 @@ import {
   TopicMastery,
 } from "@/lib/topicProgressStorage";
 import { playCorrectSound, playTapSound } from "@/lib/gameSounds";
+import WakeSlider from "@/components/ui/WakeSlider";
 
 interface SubjectWithTopics {
   id?: string;
@@ -333,24 +334,69 @@ export default function TopicProgressPage() {
                               </div>
                             </div>
 
-                            {/* Percentage Buttons */}
-                            <div className="flex items-center gap-1.5 pl-10 sm:pl-0 shrink-0">
-                              {[0, 25, 50, 75, 100].map((pct) => (
+                            {/* Interactive WakeSlider & Percentage Controls */}
+                            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 pl-10 sm:pl-0 w-full sm:w-auto">
+                              {/* React Bits WakeSlider */}
+                              <div className="w-full sm:w-52">
+                                <WakeSlider
+                                  value={top.percentage}
+                                  min={0}
+                                  max={100}
+                                  step={5}
+                                  bars={22}
+                                  height={32}
+                                  restHeight={9}
+                                  gap={2.5}
+                                  fillColor={top.isCompleted ? "#10b981" : "#8b5cf6"}
+                                  trackColor="#27272a"
+                                  crestColor={top.isCompleted ? "#34d399" : "#c4b5fd"}
+                                  showValue
+                                  formatValue={(v) => `${v}%`}
+                                  onChange={(newVal) =>
+                                    handleSetPercentage(sub.name, top.name, newVal)
+                                  }
+                                />
+                              </div>
+
+                              {/* Quick Snap Pills */}
+                              <div className="flex items-center gap-1 shrink-0">
                                 <button
-                                  key={pct}
                                   type="button"
-                                  onClick={() => handleSetPercentage(sub.name, top.name, pct)}
-                                  className={`text-xs font-bold px-2.5 py-1 rounded-lg transition-all active:scale-95 ${
-                                    top.percentage === pct
-                                      ? pct === 100
-                                        ? "bg-emerald-500 text-white shadow-sm shadow-emerald-500/30"
-                                        : "bg-primary text-white shadow-sm shadow-primary/30"
-                                      : "bg-white/5 hover:bg-white/10 text-muted-foreground hover:text-foreground"
+                                  onClick={() => handleSetPercentage(sub.name, top.name, 0)}
+                                  className={`text-[10px] font-bold px-2 py-1 rounded-lg transition-all ${
+                                    top.percentage === 0
+                                      ? "bg-white/20 text-white"
+                                      : "bg-white/5 hover:bg-white/10 text-muted-foreground"
                                   }`}
+                                  title="Reset to 0%"
                                 >
-                                  {pct}%
+                                  0%
                                 </button>
-                              ))}
+                                <button
+                                  type="button"
+                                  onClick={() => handleSetPercentage(sub.name, top.name, 50)}
+                                  className={`text-[10px] font-bold px-2 py-1 rounded-lg transition-all ${
+                                    top.percentage === 50
+                                      ? "bg-primary text-white"
+                                      : "bg-white/5 hover:bg-white/10 text-muted-foreground"
+                                  }`}
+                                  title="Halfway 50%"
+                                >
+                                  50%
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleSetPercentage(sub.name, top.name, 100)}
+                                  className={`text-[10px] font-bold px-2.5 py-1 rounded-lg transition-all ${
+                                    top.isCompleted
+                                      ? "bg-emerald-500 text-white shadow-sm shadow-emerald-500/30"
+                                      : "bg-white/5 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+                                  }`}
+                                  title="Mark 100% Mastered"
+                                >
+                                  100%
+                                </button>
+                              </div>
                             </div>
                           </div>
                         ))

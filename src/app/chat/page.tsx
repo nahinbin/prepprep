@@ -7,8 +7,6 @@ import {
   Bot,
   CheckCircle2,
   Calendar,
-  Mic,
-  MicOff,
   Trash2,
   MessageSquare,
   PanelLeftClose,
@@ -25,6 +23,7 @@ import {
   BookOpen,
   SquarePen,
 } from "lucide-react";
+import VoicePill from "@/components/ui/VoicePill";
 import { AppShell, NavMenu } from "@/components/NavMenu";
 import {
   sendChatMessage,
@@ -277,16 +276,8 @@ export default function ChatPage() {
     });
   };
 
-  // Voice Dictation Setup
-  const toggleVoiceDictation = () => {
-    if (isListening) {
-      if (recognitionRef.current) {
-        recognitionRef.current.stop();
-      }
-      setIsListening(false);
-      return;
-    }
-
+  // Voice Dictation Handlers (VoicePill integration)
+  const startSpeechRecognition = () => {
     const SpeechRecognition =
       (window as unknown as { SpeechRecognition?: unknown; webkitSpeechRecognition?: unknown })
         .SpeechRecognition ||
@@ -294,7 +285,7 @@ export default function ChatPage() {
         .webkitSpeechRecognition;
 
     if (!SpeechRecognition) {
-      alert("Voice dictation is not supported by your browser. Please use Chrome, Edge, or Safari.");
+      console.warn("Speech recognition not supported in this browser.");
       return;
     }
 
@@ -328,7 +319,7 @@ export default function ChatPage() {
       };
 
       recognition.onerror = (e) => {
-        console.error("Speech recognition error:", e.error);
+        console.warn("Speech recognition error:", e.error);
         setIsListening(false);
       };
 
@@ -340,8 +331,21 @@ export default function ChatPage() {
       recognitionRef.current = recognition;
       setIsListening(true);
     } catch (err) {
-      console.error("Failed to start voice dictation:", err);
+      console.error("Failed to start speech recognition:", err);
       setIsListening(false);
+    }
+  };
+
+  const stopSpeechRecognition = (reason: string) => {
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch {}
+      recognitionRef.current = null;
+    }
+    setIsListening(false);
+    if (reason === "cancel") {
+      setInput("");
     }
   };
 
@@ -929,20 +933,32 @@ export default function ChatPage() {
               className="relative rounded-[26px] bg-[#2f2f2f] border border-white/10 shadow-2xl focus-within:border-white/20 transition-all p-2 pl-4"
             >
               <div className="flex items-end gap-2">
-                {/* Voice Dictation Mic Button */}
-                <button
-                  type="button"
-                  onClick={toggleVoiceDictation}
-                  className={`w-8 h-8 rounded-full flex items-center justify-center transition-all mb-0.5 ${
-                    isListening
-                      ? "bg-rose-500 text-white animate-pulse"
-                      : "text-neutral-400 hover:text-white hover:bg-white/5"
-                  }`}
-                  title={isListening ? "Stop listening" : "Voice dictation (Speech to text)"}
-                  aria-label="Voice dictation"
-                >
-                  {isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
-                </button>
+                {/* Voice Dictation VoicePill (React Bits) */}
+                <div className="mb-0.5 shrink-0 flex items-center">
+                  <VoicePill
+                    accentColor="#8b5cf6"
+                    iconColor="#a1a1aa"
+                    background="#232326"
+                    size={30}
+                    shape="pill"
+                    reach={8}
+                    showTime
+                    waveform
+                    slideToCancel
+                    cancelDistance={64}
+                    attack={40}
+                    release={240}
+                    sensitivity={1}
+                    floor={0.1}
+                    openDuration={200}
+                    pressScale={0.95}
+                    mode="auto"
+                    reactive="mic"
+                    ariaLabel="Voice dictation"
+                    onStart={() => startSpeechRecognition()}
+                    onStop={({ reason }) => stopSpeechRecognition(reason)}
+                  />
+                </div>
 
                 {/* Multiline auto-expanding textarea */}
                 <textarea
