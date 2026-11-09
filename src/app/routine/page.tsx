@@ -32,17 +32,50 @@ import { RoutineCalendarModal } from "@/components/routine/RoutineCalendarModal"
 import { AiScheduleGeneratorModal } from "@/components/routine/AiScheduleGeneratorModal";
 import { TopicCompletionModal } from "@/components/routine/TopicCompletionModal";
 
-/** Lightweight event-driven store for routine blocks (avoids useSyncExternalStore snapshot equality issues) */
+import {
+  getUserRoutineBlocks,
+  upsertDbRoutineBlock,
+  toggleDbRoutineBlockCompleted,
+  toggleDbRoutineSubtask,
+  deleteDbRoutineBlock,
+} from "@/app/actions/routine";
+
+/** Lightweight store for routine blocks syncing with PostgreSQL and local state */
 function useRoutineBlocks(): RoutineBlock[] {
   const [blocks, setBlocks] = useState<RoutineBlock[]>(() =>
     typeof window !== "undefined" ? getAllBlocks() : []
   );
 
   useEffect(() => {
-    // Subscribe to external localStorage changes only
+    // 1. Fetch from DB
+    getUserRoutineBlocks()
+      .then((dbBlocks) => {
+        if (dbBlocks && dbBlocks.length > 0) {
+          // Sync DB blocks into storage and state
+          for (const b of dbBlocks) {
+            upsertBlock({
+              id: b.id,
+              date: b.date,
+              type: b.type,
+              title: b.title,
+              timeMode: b.timeMode,
+              startTime: b.startTime,
+              endTime: b.endTime,
+              isCompleted: b.isCompleted,
+              subject: b.subject,
+              topic: b.topic,
+              notes: b.notes,
+              subtasks: b.subtasks,
+              order: b.order,
+              createdAt: Date.now(),
+            });
+          }
+          setBlocks(getAllBlocks());
+        }
+      })
+      .catch((e) => console.warn("Failed to load routine blocks from DB:", e));
+
     const refresh = () => setBlocks(getAllBlocks());
-    // Dispatch once at mount so we always reflect the current localStorage value
-    window.dispatchEvent(new CustomEvent("routine-blocks-updated"));
     window.addEventListener("routine-blocks-updated", refresh);
     window.addEventListener("storage", refresh);
     return () => {
@@ -148,25 +181,44 @@ export default function RoutinePage() {
       return;
     }
     toggleBlockCompletion(id);
+    toggleDbRoutineBlockCompleted(id).catch(console.warn);
   };
 
   const handleTopicCompletionConfirmed = () => {
     if (completingStudyBlock) {
       toggleBlockCompletion(completingStudyBlock.id);
+      toggleDbRoutineBlockCompleted(completingStudyBlock.id).catch(console.warn);
       setCompletingStudyBlock(null);
     }
   };
 
   const handleToggleSubtask = (blockId: string, subtaskId: string) => {
     toggleSubtask(blockId, subtaskId);
+    toggleDbRoutineSubtask(blockId, subtaskId).catch(console.warn);
   };
 
   const handleSaveBlock = (block: RoutineBlock) => {
     upsertBlock(block);
+    upsertDbRoutineBlock({
+      id: block.id,
+      date: block.date,
+      type: block.type,
+      title: block.title,
+      timeMode: block.timeMode,
+      startTime: block.startTime,
+      endTime: block.endTime,
+      isCompleted: block.isCompleted,
+      subject: block.subject,
+      topic: block.topic,
+      notes: block.notes,
+      subtasks: block.subtasks,
+      order: block.order,
+    }).catch(console.warn);
   };
 
   const handleDeleteBlock = (id: string) => {
     deleteBlock(id);
+    deleteDbRoutineBlock(id).catch(console.warn);
   };
 
   const handleEditBlock = (block: RoutineBlock) => {
@@ -183,6 +235,29 @@ export default function RoutinePage() {
 
   const handleScheduleGeneratedByAi = (summary: string) => {
     setAiToast({ summary });
+    // Also re-fetch DB blocks
+    getUserRoutineBlocks().then((dbBlocks) => {
+      if (dbBlocks && dbBlocks.length > 0) {
+        for (const b of dbBlocks) {
+          upsertBlock({
+            id: b.id,
+            date: b.date,
+            type: b.type,
+            title: b.title,
+            timeMode: b.timeMode,
+            startTime: b.startTime,
+            endTime: b.endTime,
+            isCompleted: b.isCompleted,
+            subject: b.subject,
+            topic: b.topic,
+            notes: b.notes,
+            subtasks: b.subtasks,
+            order: b.order,
+            createdAt: Date.now(),
+          });
+        }
+      }
+    }).catch(console.warn);
   };
 
   // Date metadata
@@ -200,7 +275,7 @@ export default function RoutinePage() {
     <AppShell showBottomBar={false}>
       <div className="w-full max-w-3xl mx-auto px-4 pt-4 pb-28 md:pt-8 md:pb-16 space-y-6">
         {/* ================================================================= */}
-        {/*  TOP APP HEADER: Date, Day Switcher, Calendar, Settings (Icon Only)*/}
+        {/*  TOP APP HEADER: Date, Calendar, Settings (Icon Only)            */}
         {/* ================================================================= */}
         <header className="flex items-center justify-between gap-3">
           {/* Left: Date Display & Day Jump */}
@@ -228,20 +303,18 @@ export default function RoutinePage() {
               )}
             </div>
 
+            {/* Clickable Header Date without inner duplicate calendar icon */}
             <button
               onClick={() => setIsCalendarOpen(true)}
-              className="group flex items-center gap-2 mt-0.5 text-left active:scale-[0.98] transition-all"
+              className="mt-0.5 text-left active:scale-[0.98] transition-all"
             >
-              <h1 className="text-2xl sm:text-3xl font-black text-foreground tracking-tight group-hover:text-primary transition-colors">
+              <h1 className="text-2xl sm:text-3xl font-black text-foreground tracking-tight hover:text-primary transition-colors">
                 {formattedDate}
               </h1>
-              <div className="w-6 h-6 rounded-lg bg-white/5 group-hover:bg-primary/20 flex items-center justify-center text-muted-foreground group-hover:text-primary transition-colors">
-                <CalendarIcon className="w-3.5 h-3.5" />
-              </div>
             </button>
           </div>
 
-          {/* Right: Quick Controls + Settings Icon Only */}
+          {/* Right: AI Schedule + Single Calendar Icon + Settings Icon Only */}
           <div className="flex items-center gap-2 shrink-0">
             {/* Quick AI Generator Button */}
             <button
@@ -252,25 +325,7 @@ export default function RoutinePage() {
               <span>AI Schedule</span>
             </button>
 
-            {/* Day Nav Chevrons */}
-            <div className="flex items-center p-1 rounded-2xl bg-card border border-white/10 shadow-sm">
-              <button
-                onClick={handlePrevDay}
-                className="w-9 h-9 rounded-xl hover:bg-white/10 text-muted-foreground hover:text-foreground flex items-center justify-center transition-colors active:scale-90"
-                aria-label="Previous day"
-              >
-                <ChevronLeft className="w-5 h-5" />
-              </button>
-              <button
-                onClick={handleNextDay}
-                className="w-9 h-9 rounded-xl hover:bg-white/10 text-muted-foreground hover:text-foreground flex items-center justify-center transition-colors active:scale-90"
-                aria-label="Next day"
-              >
-                <ChevronRight className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Quick Calendar Icon Button */}
+            {/* Single Quick Calendar Icon Button */}
             <button
               onClick={() => setIsCalendarOpen(true)}
               className="w-11 h-11 rounded-2xl bg-card hover:bg-white/10 border border-white/10 text-muted-foreground hover:text-foreground flex items-center justify-center transition-all active:scale-95 shadow-sm"
@@ -279,7 +334,7 @@ export default function RoutinePage() {
               <CalendarIcon className="w-5 h-5" />
             </button>
 
-            {/* Settings Button: Dedicated Settings Page */}
+            {/* Settings Button: Dedicated Settings Page (Icon only) */}
             <Link
               href="/routine/settings"
               className="w-11 h-11 rounded-2xl bg-card hover:bg-white/10 border border-white/10 text-muted-foreground hover:text-foreground flex items-center justify-center transition-all active:scale-95 shadow-sm"

@@ -60,9 +60,14 @@ export async function saveSessionData(data: {
     pointsGained: number;
     pointsLost: number;
   }>;
+  userId?: string;
 }) {
   const user = await getSession();
   if (!user) return { error: "Not authenticated" };
+
+  if (data.userId && data.userId !== user.id) {
+    return { error: "User mismatch - cannot sync session for another account" };
+  }
 
   const token = data.clientSessionToken;
   if (token) {

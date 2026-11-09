@@ -205,13 +205,9 @@ export function BlockCard({
             </button>
 
             <div className="min-w-0 flex-1">
-              {/* Badge + Time Tag */}
+              {/* Time Tag */}
               <div className="flex items-center gap-2 mb-1">
-                <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider bg-violet-500/20 text-violet-300 px-2.5 py-0.5 rounded-full border border-violet-500/30">
-                  <Sparkles className="w-3 h-3 text-violet-400" />
-                  Focus Block
-                </span>
-                <span className="text-xs font-bold text-violet-300/80 bg-violet-950/50 px-2 py-0.5 rounded-md tabular-nums">
+                <span className="text-xs font-bold text-violet-300 bg-violet-950/60 border border-violet-500/20 px-2.5 py-0.5 rounded-lg tabular-nums">
                   {timeDisplay}
                 </span>
               </div>

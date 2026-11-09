@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, createContext, useContext } from "react";
+import { useState, createContext, useContext, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -22,20 +22,9 @@ import { logout } from "@/app/actions/auth";
 import { Suspense } from "react";
 import { BottomBar } from "@/components/BottomBar";
 import { QuickMuteButton } from "@/components/QuickMuteButton";
+import { getAiAssistantName } from "@/lib/routineStorage";
 
 const ShellCtx = createContext<{ mistakeCount: number }>({ mistakeCount: 0 });
-
-const links = [
-  { href: "/", label: "Home", icon: Home, match: (p: string) => p === "/" },
-  { href: "/routine", label: "Daily Routine", icon: CalendarCheck, match: (p: string) => p === "/routine" || p === "/planner" || p === "/schedule" },
-  { href: "/chat", label: "AI Study Coach", icon: Bot, match: (p: string) => p === "/chat" },
-  { href: "/notifications", label: "Notifications", icon: Bell, match: (p: string) => p === "/notifications" },
-  { href: "/questions", label: "Question Bank", icon: Database, match: (p: string) => p === "/questions" },
-  { href: "/history", label: "History", icon: History, match: (p: string) => p === "/history" },
-  { href: "/rewards", label: "Store", icon: Gift, match: (p: string) => p === "/rewards" },
-  { href: "/subjects", label: "Subjects", icon: Layers, match: (p: string) => p === "/subjects" },
-  { href: "/friends", label: "Friends", icon: Users, match: (p: string) => p === "/friends" },
-];
 
 function NavLinks({
   onNavigate,
@@ -45,6 +34,29 @@ function NavLinks({
   className?: string;
 }) {
   const pathname = usePathname();
+  const [aiName, setAiName] = useState(() => getAiAssistantName());
+
+  useEffect(() => {
+    const handleNameChange = (e: Event) => {
+      const customEvent = e as CustomEvent<string>;
+      if (customEvent.detail) setAiName(customEvent.detail);
+      else setAiName(getAiAssistantName());
+    };
+    window.addEventListener("ai-assistant-name-updated", handleNameChange);
+    return () => window.removeEventListener("ai-assistant-name-updated", handleNameChange);
+  }, []);
+
+  const links = [
+    { href: "/", label: "Home", icon: Home, match: (p: string) => p === "/" },
+    { href: "/routine", label: "Daily Routine", icon: CalendarCheck, match: (p: string) => p === "/routine" || p === "/planner" || p === "/schedule" },
+    { href: "/chat", label: aiName || "AI Assistant", icon: Bot, match: (p: string) => p === "/chat" },
+    { href: "/notifications", label: "Notifications", icon: Bell, match: (p: string) => p === "/notifications" },
+    { href: "/questions", label: "Question Bank", icon: Database, match: (p: string) => p === "/questions" },
+    { href: "/history", label: "History", icon: History, match: (p: string) => p === "/history" },
+    { href: "/rewards", label: "Store", icon: Gift, match: (p: string) => p === "/rewards" },
+    { href: "/subjects", label: "Subjects", icon: Layers, match: (p: string) => p === "/subjects" },
+    { href: "/friends", label: "Friends", icon: Users, match: (p: string) => p === "/friends" },
+  ];
 
   return (
     <nav className={className}>

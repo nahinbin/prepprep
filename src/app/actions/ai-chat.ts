@@ -1,7 +1,12 @@
 "use server";
 
 import { generateGeminiText, generateGeminiJson, isGeminiConfigured } from "@/lib/gemini";
-import { bulkAddTopicsToSubject, getUserSubjectsAndTopics } from "@/app/actions/subjects";
+import { bulkAddTopicsToSubject, getUserSubjectsAndTopics, createSubject } from "@/app/actions/subjects";
+import { getSession } from "@/app/actions/auth";
+import { prisma } from "@/lib/prisma";
+import { revalidatePath } from "next/cache";
+
+export const DEFAULT_AI_NAME = "AI Assistant";
 
 export interface GeneratedQuizQuestion {
   question: string;
@@ -23,9 +28,11 @@ export interface ChatMessage {
   actionTaken?: {
     type:
       | "added_topics"
+      | "created_subject"
       | "study_tip"
       | "added_block"
       | "updated_notepad"
+      | "changed_name"
       | "generated_schedule"
       | "created_quiz";
     subjectName?: string;
@@ -42,6 +49,7 @@ export interface ChatMessage {
       notes?: string;
     };
     newNotepadText?: string;
+    newName?: string;
     scheduleSummary?: string;
   };
   generatedQuiz?: GeneratedQuiz;
@@ -54,16 +62,219 @@ export interface ChatContext {
   activePresets?: string[];
 }
 
+export interface DbChatSessionSummary {
+  id: string;
+  title: string;
+  updatedAt: number;
+  messages: ChatMessage[];
+}
+
+/**
+ * Get all chat sessions for the logged-in user from PostgreSQL database
+ */
+export async function getDbChatSessions(): Promise<DbChatSessionSummary[]> {
+  try {
+    const user = await getSession();
+    if (!user) return [];
+
+    const sessions = await prisma.aiChatSession.findMany({
+      where: { userId: user.id },
+      include: {
+        messages: {
+          orderBy: { createdAt: "asc" },
+        },
+      },
+      orderBy: { updatedAt: "desc" },
+    });
+
+    return sessions.map((s) => ({
+      id: s.id,
+      title: s.title,
+      updatedAt: s.updatedAt.getTime(),
+      messages: s.messages.map((m) => ({
+        id: m.id,
+        role: m.role as "user" | "assistant" | "system",
+        content: m.content,
+        actionTaken: m.actionTaken ? JSON.parse(m.actionTaken) : undefined,
+        generatedQuiz: m.quizData ? JSON.parse(m.quizData) : undefined,
+        timestamp: m.createdAt.getTime(),
+      })),
+    }));
+  } catch (err) {
+    console.error("Failed to load DB chat sessions:", err);
+    return [];
+  }
+}
+
+/**
+ * Create a new chat session in PostgreSQL for the logged-in user
+ */
+export async function createDbChatSession(title: string = "New Chat") {
+  const user = await getSession();
+  if (!user) return null;
+
+  const session = await prisma.aiChatSession.create({
+    data: {
+      userId: user.id,
+      title: title.slice(0, 50),
+    },
+  });
+
+  return {
+    id: session.id,
+    title: session.title,
+    updatedAt: session.updatedAt.getTime(),
+    messages: [],
+  };
+}
+
+/**
+ * Delete a chat session in PostgreSQL for the logged-in user
+ */
+export async function deleteDbChatSession(sessionId: string) {
+  const user = await getSession();
+  if (!user) return { success: false };
+
+  const session = await prisma.aiChatSession.findFirst({
+    where: { id: sessionId, userId: user.id },
+  });
+  if (!session) return { success: false };
+
+  await prisma.aiChatSession.delete({
+    where: { id: sessionId },
+  });
+
+  return { success: true };
+}
+
+/**
+ * Persist a chat message directly in PostgreSQL
+ */
+export async function saveDbChatMessage(sessionId: string, message: ChatMessage) {
+  try {
+    const user = await getSession();
+    if (!user) return null;
+
+    const session = await prisma.aiChatSession.findFirst({
+      where: { id: sessionId, userId: user.id },
+    });
+    if (!session) return null;
+
+    const record = await prisma.aiChatMessage.create({
+      data: {
+        sessionId,
+        role: message.role,
+        content: message.content,
+        actionTaken: message.actionTaken ? JSON.stringify(message.actionTaken) : null,
+        quizData: message.generatedQuiz ? JSON.stringify(message.generatedQuiz) : null,
+      },
+    });
+
+    // Update session timestamp & title if it's the first user message
+    const isFirstUser = message.role === "user" && session.title === "New Chat";
+    await prisma.aiChatSession.update({
+      where: { id: sessionId },
+      data: {
+        updatedAt: new Date(),
+        ...(isFirstUser ? { title: message.content.slice(0, 40) } : {}),
+      },
+    });
+
+    return record;
+  } catch (err) {
+    console.warn("Failed to save DB chat message:", err);
+    return null;
+  }
+}
+
+/**
+ * Send a chat message, execute DB actions, generate response, and persist in PostgreSQL
+ */
 export async function sendChatMessage(
   message: string,
   history: Array<{ role: "user" | "assistant"; content: string }>,
-  context: ChatContext = {}
+  context: ChatContext = {},
+  sessionId?: string
 ): Promise<ChatMessage> {
+  const user = await getSession();
   const trimmed = message.trim();
   const lower = trimmed.toLowerCase();
-  const aiName = context.aiName?.trim() || "Jarvis";
 
-  // 1. Detect if user is asking to add topics to a subject
+  // Determine AI name: from context, from user DB profile, or default "AI Assistant"
+  let aiName = context.aiName?.trim();
+  if (!aiName && user?.aiName) {
+    aiName = user.aiName.trim();
+  }
+  if (!aiName) {
+    aiName = DEFAULT_AI_NAME;
+  }
+
+  // 1. Detect if user is asking to change AI name
+  // e.g. "change your name to Jarvis" or "call yourself Echo" or "your name is now Alex"
+  const changeNameRegex = /(?:change\s+your\s+name\s+to|call\s+yourself|your\s+name\s+is\s+now|rename\s+yourself\s+to)\s+([a-zA-Z0-9_\-\s]{2,25})/i;
+  const matchChangeName = trimmed.match(changeNameRegex);
+  if (matchChangeName && user) {
+    const newName = matchChangeName[1].trim();
+    if (newName) {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { aiName: newName },
+      });
+      revalidatePath("/chat");
+      revalidatePath("/routine/settings");
+
+      const responseMsg: ChatMessage = {
+        id: "msg_" + Date.now().toString(36),
+        role: "assistant",
+        content: `Got it! My name is now **${newName}**. I'll remember this across your account and all future sessions! What shall we tackle next?`,
+        actionTaken: {
+          type: "changed_name",
+          newName,
+        },
+        timestamp: Date.now(),
+      };
+
+      if (sessionId) {
+        await saveDbChatMessage(sessionId, responseMsg);
+      }
+      return responseMsg;
+    }
+  }
+
+  // 2. Detect if user is asking to create a new Subject
+  // e.g. "create subject Physics" or "add subject Advanced Math"
+  const createSubRegex = /^(?:please\s+)?(?:create|add|make)\s+subject\s+([a-zA-Z0-9_\s]+)$/i;
+  const matchSub = trimmed.match(createSubRegex);
+  if (matchSub && user) {
+    const subName = matchSub[1].trim();
+    if (subName) {
+      const res = await createSubject(subName);
+      if ("error" in res && res.error) {
+        return {
+          id: "msg_" + Date.now().toString(36),
+          role: "assistant",
+          content: `⚠️ Could not create subject: ${res.error}`,
+          timestamp: Date.now(),
+        };
+      }
+      const responseMsg: ChatMessage = {
+        id: "msg_" + Date.now().toString(36),
+        role: "assistant",
+        content: `✅ I've created the subject **${subName}** in your account! You can now add topics or ask me to schedule study sessions for it.`,
+        actionTaken: {
+          type: "created_subject",
+          subjectName: subName,
+        },
+        timestamp: Date.now(),
+      };
+      if (sessionId) {
+        await saveDbChatMessage(sessionId, responseMsg);
+      }
+      return responseMsg;
+    }
+  }
+
+  // 3. Detect if user is asking to add topics to a subject
   // e.g. "add these topics to math: algebra, calculus, geometry"
   const addTopicsRegex = /(?:add|create|put|insert)(?:\s+(?:these|the following|some|\d+))?\s+topics?\s+(?:to|in|under|for)\s+([a-zA-Z0-9_\s]+?)[:\n\-\?]([\s\S]+)/i;
   const matchTopics = trimmed.match(addTopicsRegex);
@@ -89,10 +300,10 @@ export async function sendChatMessage(
           };
         }
         if ("success" in res && res.success) {
-          return {
+          const responseMsg: ChatMessage = {
             id: "msg_" + Date.now().toString(36),
             role: "assistant",
-            content: `✅ I've updated **${res.subjectName}** for you!\n\n• **${res.addedCount}** new topics added to your Question Bank & Routine\n• **${res.skippedCount}** duplicates skipped\n\nAdded:\n${res.addedTopics.slice(0, 10).map((t) => `• ${t}`).join("\n")}${res.addedTopics.length > 10 ? `\n• ...and ${res.addedTopics.length - 10} more` : ""}\n\nYou can now study these or practice them in MCQ Arena!`,
+            content: `✅ I've updated **${res.subjectName}** for you in your database!\n\n• **${res.addedCount}** new topics added\n• **${res.skippedCount}** duplicates skipped\n\nAdded:\n${res.addedTopics.slice(0, 10).map((t) => `• ${t}`).join("\n")}${res.addedTopics.length > 10 ? `\n• ...and ${res.addedTopics.length - 10} more` : ""}\n\nYou can now study these or practice them in MCQ Arena!`,
             actionTaken: {
               type: "added_topics",
               subjectName: res.subjectName,
@@ -102,6 +313,10 @@ export async function sendChatMessage(
             },
             timestamp: Date.now(),
           };
+          if (sessionId) {
+            await saveDbChatMessage(sessionId, responseMsg);
+          }
+          return responseMsg;
         }
       } catch {
         return {
@@ -114,7 +329,7 @@ export async function sendChatMessage(
     }
   }
 
-  // 2. Detect if user is asking to generate MCQs from text/reading
+  // 4. Detect if user is asking to generate MCQs from text/reading
   const isMcqRequest =
     lower.includes("make mcq") ||
     lower.includes("create mcq") ||
@@ -149,7 +364,7 @@ Return valid raw JSON matching this shape:
       });
 
       if (generated && Array.isArray(generated.questions) && generated.questions.length > 0) {
-        return {
+        const responseMsg: ChatMessage = {
           id: "msg_" + Date.now().toString(36),
           role: "assistant",
           content: `🎯 I generated a **${generated.questions.length}-question practice quiz** from your notes!\n\nClick **Start Practice Quiz** below to test yourself right now:`,
@@ -159,6 +374,10 @@ Return valid raw JSON matching this shape:
           generatedQuiz: generated,
           timestamp: Date.now(),
         };
+        if (sessionId) {
+          await saveDbChatMessage(sessionId, responseMsg);
+        }
+        return responseMsg;
       }
     } catch (e) {
       console.warn("Gemini quiz generation error:", e);
@@ -168,7 +387,7 @@ Return valid raw JSON matching this shape:
   // Fallback MCQ creation if requested but Gemini failed or not configured
   if (isMcqRequest) {
     const topicHint = trimmed.slice(0, 40).replace(/[^\w\s]/gi, "");
-    return {
+    const fallbackQuiz: ChatMessage = {
       id: "msg_" + Date.now().toString(36),
       role: "assistant",
       content: `🎯 I've prepared a practice quiz on **${topicHint || "Core Concepts"}**!\n\nClick **Start Practice Quiz** to test your knowledge:`,
@@ -205,17 +424,38 @@ Return valid raw JSON matching this shape:
       },
       timestamp: Date.now(),
     };
+    if (sessionId) {
+      await saveDbChatMessage(sessionId, fallbackQuiz);
+    }
+    return fallbackQuiz;
   }
 
-  // 3. Detect if user is asking to add a routine block
-  // e.g. "add a study block for Physics at 4 PM" or "add block: sleep at 11 PM"
+  // 5. Detect if user is asking to add a routine block
   const addBlockMatch = trimmed.match(/(?:add|create|schedule)\s+(?:a\s+)?(study|normal)?\s*block(?:\s+for|\s+to|\s*:)?\s*([^,\n]+?)(?:\s+(?:at|from)\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm)?))?/i);
-  if (addBlockMatch) {
+  if (addBlockMatch && user) {
     const rawType = (addBlockMatch[1] || "").toLowerCase() === "study" ? "study" : "normal";
     const rawSubjectOrTitle = addBlockMatch[2].trim();
     const rawTime = addBlockMatch[3] ? addBlockMatch[3].trim() : undefined;
 
-    return {
+    // Persist directly to DB
+    const now = new Date();
+    const dateKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+
+    await prisma.routineBlock.create({
+      data: {
+        userId: user.id,
+        date: dateKey,
+        type: rawType,
+        title: rawSubjectOrTitle,
+        timeMode: "range",
+        startTime: rawTime || "15:00",
+        endTime: "16:00",
+        subject: rawType === "study" ? rawSubjectOrTitle : null,
+      },
+    });
+    revalidatePath("/routine");
+
+    const blockMsg: ChatMessage = {
       id: "msg_" + Date.now().toString(36),
       role: "assistant",
       content: `📅 I've added a **${rawType === "study" ? "Study Block" : "Block"}** to your Daily Routine for today: **${rawSubjectOrTitle}**${rawTime ? ` at ${rawTime}` : ""}!\n\nIt is now saved in your routine schedule.`,
@@ -230,14 +470,25 @@ Return valid raw JSON matching this shape:
       },
       timestamp: Date.now(),
     };
+    if (sessionId) {
+      await saveDbChatMessage(sessionId, blockMsg);
+    }
+    return blockMsg;
   }
 
-  // 4. Detect if user is asking to update permanent notepad
-  // e.g. "remember that on tuesdays I have football" or "add to my notepad: coaching on..."
+  // 6. Detect if user is asking to update permanent notepad
   if (lower.startsWith("remember") || lower.includes("add to notepad") || lower.includes("save to notepad") || lower.includes("add to my notes")) {
     const cleanNote = trimmed.replace(/^(?:remember\s+(?:that)?|add\s+to\s+(?:my\s+)?notepad(?:\s*:)?|save\s+to\s+(?:my\s+)?notepad(?:\s*:)?|add\s+to\s+my\s+notes(?:\s*:)?)/i, "").trim();
-    if (cleanNote) {
-      return {
+    if (cleanNote && user) {
+      const currentNotes = user.aiNotepad || "";
+      const updatedNotes = currentNotes ? `${currentNotes}\n• ${cleanNote}` : `• ${cleanNote}`;
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { aiNotepad: updatedNotes },
+      });
+      revalidatePath("/routine/settings");
+
+      const noteMsg: ChatMessage = {
         id: "msg_" + Date.now().toString(36),
         role: "assistant",
         content: `📝 Got it! I've saved that into your **Routine Notepad**:\n\n> "${cleanNote}"\n\nI will remember this whenever building your daily schedules!`,
@@ -247,10 +498,14 @@ Return valid raw JSON matching this shape:
         },
         timestamp: Date.now(),
       };
+      if (sessionId) {
+        await saveDbChatMessage(sessionId, noteMsg);
+      }
+      return noteMsg;
     }
   }
 
-  // 5. Fetch subjects & topics context
+  // 7. Fetch subjects & topics context
   let subjectsContext = "";
   try {
     const userSubjects = await getUserSubjectsAndTopics();
@@ -261,15 +516,16 @@ Return valid raw JSON matching this shape:
     console.warn("Failed to fetch subjects context for AI chat:", err);
   }
 
-  // 6. Call Gemini LLM if configured
+  // 8. Call Gemini LLM if configured
   if (isGeminiConfigured()) {
     try {
       const systemInstruction = `You are ${aiName}, the student's personal AI study coach and academic partner for MCQ Arena.
 You are warm, brilliant, encouraging, and deeply knowledgeable across STEM, mathematics, accounting, finance, physics, chemistry, biology, medicine, and business.
+Always refer to yourself as ${aiName}.
 You have direct knowledge of the student's subjects:
 ${subjectsContext || "No subjects added yet."}
 Permanent Notepad Rules:
-${context.notepadNotes || "Standard schedule."}
+${context.notepadNotes || user?.aiNotepad || "Standard schedule."}
 
 Your capabilities:
 1. You can teach and explain complex problems step-by-step.
@@ -288,35 +544,41 @@ Your capabilities:
         temperature: 0.6,
       });
 
-      return {
+      const geminiMsg: ChatMessage = {
         id: "msg_" + Date.now().toString(36),
         role: "assistant",
         content: reply,
         timestamp: Date.now(),
       };
+      if (sessionId) {
+        await saveDbChatMessage(sessionId, geminiMsg);
+      }
+      return geminiMsg;
     } catch (err) {
       console.warn("Gemini chat error, fallback to smart reply:", err);
     }
   }
 
-  // 7. Smart Conversational Fallback
+  // 9. Smart Conversational Fallback
   let smartReply = "";
   if (lower.includes("hello") || lower.includes("hi") || lower.includes("hey") || lower.includes("who are you")) {
     smartReply = `Hey! I'm **${aiName}**, your personal study coach. I'm here to help you study, plan your routines, generate practice MCQs, and prepare for finals.\n\nWhat are you working on today?`;
   } else if (lower.includes("math") || lower.includes("calculus") || lower.includes("derivative") || lower.includes("integral")) {
     smartReply = `For Mathematics, active problem solving beats passive reading every time! I suggest breaking formulas down into 45-minute focus sprints in your **Daily Routine**, followed by rapid MCQ testing in **Practice** mode.\n\nWant me to generate some practice MCQs for you? Just say "Make MCQs on Calculus"!`;
   } else if (lower.includes("exam") || lower.includes("final") || lower.includes("prepare") || lower.includes("schedule")) {
-    smartReply = `Exam preparation is about consistent sprints without burnout. Make sure to head over to **Daily Routine** and click **✨ Build with AI** each morning — it skips topics you've completed 100% and focuses on your unfinished high-yield subjects!`;
+    smartReply = `Exam preparation is about consistent sprints without burnout. Make sure to head over to **Daily Routine** and click **AI Schedule** each morning — it skips topics you've completed 100% and focuses on your unfinished high-yield subjects!`;
   } else {
     smartReply = `I'm with you! As **${aiName}**, I can:\n\n• **Generate MCQs**: Paste any paragraph or lecture notes and say *"Make MCQs from this"*\n• **Auto-Add Topics**: Say *"Add topics to [Subject]: Topic 1, Topic 2"*\n• **Routine Scheduling**: Ask me to add blocks or update your notepad\n• **Explain Concepts**: Ask me anything in Math, Physics, Chemistry, Accounting, or Finance!\n\nHow can I help you right now?`;
   }
 
-  return {
+  const fallbackFinalMsg: ChatMessage = {
     id: "msg_" + Date.now().toString(36),
     role: "assistant",
     content: smartReply,
     timestamp: Date.now(),
   };
+  if (sessionId) {
+    await saveDbChatMessage(sessionId, fallbackFinalMsg);
+  }
+  return fallbackFinalMsg;
 }
-
-

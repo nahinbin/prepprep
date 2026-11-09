@@ -29,7 +29,12 @@ import {
   sendChatMessage,
   ChatMessage,
   GeneratedQuiz,
+  getDbChatSessions,
+  createDbChatSession,
+  deleteDbChatSession,
+  saveDbChatMessage,
 } from "@/app/actions/ai-chat";
+import { getAiProfile } from "@/app/actions/ai-profile";
 import {
   getAiAssistantName,
   upsertBlock,
@@ -251,6 +256,29 @@ export default function ChatPage() {
     }
   }, [input]);
 
+  // Load user profile & PostgreSQL sessions on mount
+  useEffect(() => {
+    getAiProfile()
+      .then((p) => {
+        if (p?.aiName) {
+          setAiName(p.aiName);
+        }
+      })
+      .catch(console.warn);
+
+    getDbChatSessions()
+      .then((dbSessions) => {
+        if (dbSessions && dbSessions.length > 0) {
+          setSessions(dbSessions);
+          setActiveSessionId(dbSessions[0].id);
+          if (dbSessions[0].messages.length > 0) {
+            setMessages(dbSessions[0].messages);
+          }
+        }
+      })
+      .catch(console.warn);
+  }, []);
+
   const persistMessages = (newMessages: ChatMessage[]) => {
     setMessages(newMessages);
     if (isTemporaryChat || !activeSessionId) return;
@@ -374,12 +402,21 @@ export default function ChatPage() {
     }
     setIsSending(true);
 
+    if (!isTemporaryChat && activeSessionId) {
+      saveDbChatMessage(activeSessionId, userMsg).catch(console.warn);
+    }
+
     try {
       const historyPayload = newHistory.map((m) => ({
         role: m.role === "system" ? ("assistant" as const) : m.role,
         content: m.content,
       }));
-      const res = await sendChatMessage(textToSend, historyPayload);
+      const res = await sendChatMessage(
+        textToSend,
+        historyPayload,
+        { aiName },
+        isTemporaryChat ? undefined : activeSessionId
+      );
 
       // Execute AI scheduled block if suggested
       if (res.actionTaken?.type === "added_block" && res.actionTaken.blockData) {
@@ -407,6 +444,11 @@ export default function ChatPage() {
         }
       }
 
+      // If user changed AI name in chat, update local state
+      if (res.actionTaken?.type === "changed_name" && res.actionTaken.newName) {
+        setAiName(res.actionTaken.newName);
+      }
+
       persistMessages([...newHistory, res]);
     } catch (err) {
       console.error("Chat error:", err);
@@ -425,8 +467,15 @@ export default function ChatPage() {
   };
 
   // Session Management
-  const handleNewChat = useCallback(() => {
-    const newSession = createNewSession(aiName);
+  const handleNewChat = useCallback(async () => {
+    let dbSess = null;
+    if (!isTemporaryChat) {
+      dbSess = await createDbChatSession("New Chat").catch(() => null);
+    }
+    const welcome = createWelcomeMessage(aiName);
+    const newSession: ChatSession = dbSess
+      ? { ...dbSess, messages: [welcome] }
+      : createNewSession(aiName);
 
     setSessions((prev) => {
       const updated = [newSession, ...prev];
@@ -438,7 +487,7 @@ export default function ChatPage() {
     setMessages(newSession.messages);
     setIsTemporaryChat(false);
     setSidebarOpen(false);
-  }, [aiName]);
+  }, [aiName, isTemporaryChat]);
 
   const handleSelectSession = (id: string) => {
     const found = sessions.find((s) => s.id === id);
@@ -452,12 +501,20 @@ export default function ChatPage() {
 
   const handleDeleteSession = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
+    deleteDbChatSession(id).catch(console.warn);
     const filtered = sessions.filter((s) => s.id !== id);
     saveSessionsToStorage(filtered);
     setSessions(filtered);
 
     if (activeSessionId === id) {
       if (filtered.length > 0) {
+        setActiveSessionId(filtered[0].id);
+        setMessages(filtered[0].messages);
+      } else {
+        handleNewChat();
+      }
+    }
+  };
         setActiveSessionId(filtered[0].id);
         setMessages(filtered[0].messages);
       } else {
@@ -662,15 +719,12 @@ export default function ChatPage() {
                 )}
               </button>
 
-              {/* Model Dropdown Pill */}
-              <div className="flex items-center gap-1.5 px-3 py-1 rounded-xl hover:bg-[#2f2f2f] cursor-pointer transition-colors group">
-                <span className="text-base font-semibold text-white">
+              {/* AI Name Display */}
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#2f2f2f]/80 border border-white/5">
+                <Bot className="w-4 h-4 text-primary" />
+                <span className="text-sm font-bold text-white">
                   {aiName}
                 </span>
-                <span className="text-xs text-neutral-400 font-medium">
-                  3.5 Flash
-                </span>
-                <ChevronDown className="w-3.5 h-3.5 text-neutral-400 group-hover:text-white transition-colors" />
               </div>
             </div>
 

@@ -1,4 +1,5 @@
 export type OfflineSessionPayload = {
+  userId?: string;
   clientSessionToken: string;
   totalQuestions: number;
   correctAnswers: number;

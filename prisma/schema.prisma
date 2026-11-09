@@ -37,6 +37,13 @@ model User {
   friendsInitiated Friendship[]     @relation("UserFriends")
   friendsReceived Friendship[]      @relation("FriendUsers")
   notifications   Notification[]
+
+  routineBlocks   RoutineBlock[]
+  routinePresets  RoutinePreset[]
+  chatSessions    AiChatSession[]
+  topicMasteries  TopicMasteryRecord[]
+  aiName          String            @default("AI Assistant")
+  aiNotepad       String            @default("")
 }
 
 model Reward {
@@ -181,3 +188,79 @@ model Notification {
   link      String?  // Optional link to navigate to when clicked
   createdAt DateTime @default(now())
 }
+
+model RoutineBlock {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date        String   // "YYYY-MM-DD"
+  type        String   @default("study") // "study" | "normal"
+  title       String
+  timeMode    String   @default("range") // "range" | "single" | "anytime"
+  startTime   String?
+  endTime     String?
+  isCompleted Boolean  @default(false)
+  subject     String?
+  topic       String?
+  notes       String?
+  subtasks    String   @default("[]") // JSON string of subtasks
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId, date])
+}
+
+model RoutinePreset {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name        String
+  description String   @default("")
+  isActive    Boolean  @default(true)
+  isCustom    Boolean  @default(true)
+  blocks      String   @default("[]") // JSON string of preset blocks
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model AiChatSession {
+  id        String          @id @default(cuid())
+  userId    String
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String          @default("New Chat")
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+  messages  AiChatMessage[]
+
+  @@index([userId])
+}
+
+model AiChatMessage {
+  id          String        @id @default(cuid())
+  sessionId   String
+  session     AiChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  role        String        // "user" | "assistant" | "system"
+  content     String
+  actionTaken String?       // JSON string
+  quizData    String?       // JSON string
+  createdAt   DateTime      @default(now())
+
+  @@index([sessionId])
+}
+
+model TopicMasteryRecord {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subject    String
+  topic      String
+  percentage Int      @default(0)
+  updatedAt  DateTime @updatedAt
+
+  @@unique([userId, subject, topic])
+  @@index([userId])
+}
+

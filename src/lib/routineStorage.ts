@@ -7,7 +7,7 @@ const AI_PERMANENT_NOTES_KEY = "mcq_routine_ai_permanent_notes_v1";
 const AI_NAME_KEY = "mcq_ai_assistant_name_v1";
 const PRESETS_STORAGE_KEY = "mcq_routine_presets_v1";
 
-export const DEFAULT_AI_NAME = "Jarvis";
+export const DEFAULT_AI_NAME = "AI Assistant";
 
 export function getAiAssistantName(): string {
   if (typeof window === "undefined") return DEFAULT_AI_NAME;
@@ -104,7 +104,8 @@ export function formatHumanDate(dateKey: string): { dayName: string; formattedDa
   const isToday = formatDateKey(now) === dateKey;
 
   const dayName = target.toLocaleDateString("en-US", { weekday: "long" });
-  const formattedDate = target.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  // Do NOT show year in header date (show e.g. "Nov 9" with day "Monday" on top)
+  const formattedDate = target.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 
   return { dayName, formattedDate, isToday };
 }

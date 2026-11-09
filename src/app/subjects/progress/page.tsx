@@ -16,6 +16,10 @@ import {
 import { AppShell } from "@/components/NavMenu";
 import { getUserSubjectsAndTopics } from "@/app/actions/subjects";
 import {
+  getUserTopicMasteries,
+  saveDbTopicMastery,
+} from "@/app/actions/topic-mastery";
+import {
   getAllTopicMastery,
   setTopicMastery,
   getMasteryKey,
@@ -65,7 +69,20 @@ export default function TopicProgressPage() {
       }
     });
 
-    // 2. Listen to updates
+    // 2. Fetch user topic mastery from PostgreSQL
+    getUserTopicMasteries().then((dbMastery) => {
+      if (dbMastery) {
+        for (const [key, val] of Object.entries(dbMastery)) {
+          const [sub, top] = key.split(":::");
+          if (sub && top) {
+            setTopicMastery(sub, top, val.percentage);
+          }
+        }
+        setAllMastery(getAllTopicMastery());
+      }
+    }).catch(console.warn);
+
+    // 3. Listen to updates
     const sync = () => setAllMastery(getAllTopicMastery());
     window.addEventListener("topic-mastery-updated", sync);
     window.addEventListener("storage", sync);
@@ -144,6 +161,7 @@ export default function TopicProgressPage() {
       else playTapSound();
     } catch {}
     setTopicMastery(subName, topName, newPct);
+    saveDbTopicMastery(subName, topName, newPct).catch(console.warn);
   };
 
   const handleSetPercentage = (subName: string, topName: string, pct: number) => {
@@ -152,6 +170,7 @@ export default function TopicProgressPage() {
       else playTapSound();
     } catch {}
     setTopicMastery(subName, topName, pct);
+    saveDbTopicMastery(subName, topName, pct).catch(console.warn);
   };
 
   return (
@@ -168,11 +187,11 @@ export default function TopicProgressPage() {
               <ChevronLeft className="w-5 h-5" />
             </button>
             <div>
-              <h1 className="text-2xl font-black text-foreground tracking-tight flex items-center gap-2">
-                <span>Completed Topics & Progress</span>
+              <h1 className="text-2xl font-black text-foreground tracking-tight">
+                Topic Mastery
               </h1>
               <p className="text-xs text-muted-foreground font-semibold">
-                Mark your mastery. Topics marked 100% are never scheduled by AI.
+                Track completion across your subjects
               </p>
             </div>
           </div>
@@ -326,9 +345,9 @@ export default function TopicProgressPage() {
                                   {top.name}
                                 </span>
                                 {top.isCompleted && (
-                                  <span className="text-[10px] font-black uppercase text-emerald-400 flex items-center gap-1">
+                                  <span className="text-[10px] font-bold text-emerald-400 flex items-center gap-1">
                                     <Sparkles className="w-3 h-3" />
-                                    100% Mastered · Excluded from AI Routine
+                                    Mastered
                                   </span>
                                 )}
                               </div>
