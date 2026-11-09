@@ -11,8 +11,7 @@ import React, {
   type MouseEvent,
   type PointerEvent
 } from 'react';
-import { HugeiconsIcon } from '@hugeicons/react';
-import { ArrowLeft01Icon, Mic01Icon } from '@hugeicons/core-free-icons';
+import { Mic, ArrowLeft } from 'lucide-react';
 
 export type VoicePillShape = 'pill' | 'rounded';
 export type VoicePillMode = 'auto' | 'hold' | 'toggle';
@@ -532,7 +531,7 @@ const VoicePill: React.FC<VoicePillProps> = ({
           className="pointer-events-none absolute inset-y-0 right-full inline-flex items-center justify-center gap-[3px] leading-none font-medium [width:var(--vp-extra)] [color:var(--vp-accent)] [font-size:var(--vp-time-size)] [opacity:var(--vp-cancel)]"
           aria-hidden="true"
         >
-          <HugeiconsIcon icon={ArrowLeft01Icon} size={12} strokeWidth={2.2} />
+          <ArrowLeft size={12} strokeWidth={2.2} />
           <span>Cancel</span>
         </span>
       ) : null}
@@ -547,7 +546,7 @@ const VoicePill: React.FC<VoicePillProps> = ({
       ) : null}
       <span className="relative grid place-items-center [width:var(--vp-size)] [height:var(--vp-size)] [transform:translateX(var(--vp-slide))] [transition:transform_240ms_cubic-bezier(0.23,1,0.32,1)] group-data-[sliding]:[transition-property:opacity,filter] motion-reduce:[filter:none]! motion-reduce:[transition-property:opacity]">
         <span className="inline-flex [grid-area:1/1] [transition:opacity_200ms_ease,filter_200ms_ease,transform_200ms_cubic-bezier(0.23,1,0.32,1)] group-data-[state=listening]:opacity-0 group-data-[state=listening]:[filter:blur(2px)] group-data-[state=listening]:[transform:scale(0.7)] group-data-[input=key]:[transition-duration:0ms] motion-reduce:[filter:none]! motion-reduce:[transform:none]! motion-reduce:[transition:opacity_200ms_ease]">
-          <HugeiconsIcon icon={Mic01Icon} size={Math.round(size * 0.54)} strokeWidth={2} />
+          <Mic size={Math.round(size * 0.54)} strokeWidth={2} />
         </span>
         <span
           className="bg-current opacity-0 [grid-area:1/1] [width:var(--vp-stop)] [height:var(--vp-stop)] [border-radius:22%] [filter:blur(2px)] [transform:scale(0.6)] [transition:opacity_200ms_ease,filter_200ms_ease,transform_200ms_cubic-bezier(0.23,1,0.32,1)] group-data-[state=listening]:opacity-100 group-data-[state=listening]:[filter:blur(0)] group-data-[state=listening]:[transform:scale(1)] group-data-[input=key]:[transition-duration:0ms] motion-reduce:[filter:none]! motion-reduce:[transform:none]! motion-reduce:[transition:opacity_200ms_ease]"

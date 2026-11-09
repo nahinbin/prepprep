@@ -515,13 +515,6 @@ export default function ChatPage() {
       }
     }
   };
-        setActiveSessionId(filtered[0].id);
-        setMessages(filtered[0].messages);
-      } else {
-        handleNewChat();
-      }
-    }
-  };
 
   // Copy Message Content to Clipboard
   const handleCopyMessage = (id: string, content: string) => {
