@@ -320,3 +320,104 @@ export async function getUserSubjectsAndTopics() {
   }
 }
 
+/**
+ * Delete a subject by its name for the authenticated user
+ */
+export async function deleteSubjectByName(name: string) {
+  const user = await requireAuth();
+  const trimmed = name.trim();
+  if (!trimmed) return { error: "Subject name is required." };
+
+  const subject = await prisma.subject.findFirst({
+    where: {
+      userId: user.id,
+      name: { equals: trimmed, mode: "insensitive" },
+    },
+  });
+  if (!subject) return { error: `Subject "${trimmed}" not found.` };
+
+  await prisma.subject.delete({
+    where: { id: subject.id },
+  });
+
+  revalidatePath("/subjects");
+  revalidatePath("/session/new");
+  revalidatePath("/questions");
+  revalidatePath("/mistakes");
+  revalidatePath("/routine");
+  return { success: true, deletedName: subject.name };
+}
+
+/**
+ * Rename a subject by its name for the authenticated user
+ */
+export async function renameSubjectByName(oldName: string, newName: string) {
+  const user = await requireAuth();
+  const trimmedOld = oldName.trim();
+  const trimmedNew = newName.trim();
+  if (!trimmedOld || !trimmedNew) return { error: "Both old and new names are required." };
+
+  const subject = await prisma.subject.findFirst({
+    where: {
+      userId: user.id,
+      name: { equals: trimmedOld, mode: "insensitive" },
+    },
+  });
+  if (!subject) return { error: `Subject "${trimmedOld}" not found.` };
+
+  const duplicate = await prisma.subject.findFirst({
+    where: {
+      userId: user.id,
+      name: { equals: trimmedNew, mode: "insensitive" },
+      NOT: { id: subject.id },
+    },
+  });
+  if (duplicate) return { error: `A subject named "${trimmedNew}" already exists.` };
+
+  const updated = await prisma.subject.update({
+    where: { id: subject.id },
+    data: { name: trimmedNew },
+  });
+
+  revalidatePath("/subjects");
+  revalidatePath("/session/new");
+  revalidatePath("/questions");
+  revalidatePath("/routine");
+  return { success: true, oldName: subject.name, newName: updated.name };
+}
+
+/**
+ * Delete a topic from a subject by name for the authenticated user
+ */
+export async function deleteTopicFromSubject(subjectName: string, topicName: string) {
+  const user = await requireAuth();
+  const trimmedSub = subjectName.trim();
+  const trimmedTop = topicName.trim();
+  if (!trimmedSub || !trimmedTop) return { error: "Subject and topic names are required." };
+
+  const subject = await prisma.subject.findFirst({
+    where: {
+      userId: user.id,
+      name: { equals: trimmedSub, mode: "insensitive" },
+    },
+  });
+  if (!subject) return { error: `Subject "${trimmedSub}" not found.` };
+
+  const topic = await prisma.topic.findFirst({
+    where: {
+      subjectId: subject.id,
+      name: { equals: trimmedTop, mode: "insensitive" },
+    },
+  });
+  if (!topic) return { error: `Topic "${trimmedTop}" not found under "${subject.name}".` };
+
+  await prisma.topic.delete({
+    where: { id: topic.id },
+  });
+
+  revalidatePath("/subjects");
+  revalidatePath("/questions");
+  revalidatePath("/routine");
+  return { success: true, subjectName: subject.name, topicName: topic.name };
+}
+

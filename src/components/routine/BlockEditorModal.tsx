@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   X,
   BookOpen,
@@ -8,9 +8,12 @@ import {
   Plus,
   Trash2,
   Check,
+  ChevronDown,
+  Layers,
 } from "lucide-react";
 import { RoutineBlock, BlockType, TimeMode, RoutineSubtask } from "@/lib/routineTypes";
 import { generateBlockId, formatTime12 } from "@/lib/routineStorage";
+import { getUserSubjectsAndTopics } from "@/app/actions/subjects";
 
 interface BlockEditorModalProps {
   isOpen: boolean;
@@ -65,6 +68,44 @@ function BlockEditorForm({
   const [endTime, setEndTime] = useState(initialBlock?.endTime || "09:30");
   const [subtasks, setSubtasks] = useState<RoutineSubtask[]>(initialBlock?.subtasks || []);
   const [newSubtaskText, setNewSubtaskText] = useState("");
+
+  // Existing user subjects and topics from database
+  const [userSubjects, setUserSubjects] = useState<Array<{ id: string; name: string; topics: string[] }>>([]);
+  const [isCustomSubject, setIsCustomSubject] = useState(false);
+  const [isCustomTopic, setIsCustomTopic] = useState(false);
+
+  useEffect(() => {
+    getUserSubjectsAndTopics()
+      .then((res) => {
+        if (res && res.length > 0) {
+          setUserSubjects(res);
+          // If editing a block, see if its subject exists in user subjects
+          if (initialBlock?.subject) {
+            const match = res.find((s) => s.name.toLowerCase() === initialBlock.subject?.toLowerCase());
+            if (!match) {
+              setIsCustomSubject(true);
+            }
+          } else {
+            // New block: pre-select the first subject and its first topic
+            setSubject(res[0].name);
+            if (res[0].topics.length > 0) {
+              setTopic(res[0].topics[0]);
+            }
+          }
+        } else {
+          setIsCustomSubject(true);
+        }
+      })
+      .catch(console.warn);
+  }, [initialBlock]);
+
+  // Derived available topics for currently selected subject
+  const currentSubjectObj = useMemo(() => {
+    if (!subject) return null;
+    return userSubjects.find((s) => s.name.toLowerCase() === subject.toLowerCase());
+  }, [userSubjects, subject]);
+
+  const availableTopics = currentSubjectObj ? currentSubjectObj.topics : [];
 
   const handleAddSubtask = () => {
     const trimmed = newSubtaskText.trim();
@@ -188,53 +229,193 @@ function BlockEditorForm({
 
       {/* Study Block Fields */}
       {type === "study" && (
-        <div className="space-y-3.5">
-          {/* Subject Input */}
-          <div>
-            <label className="block text-xs font-bold text-violet-400 uppercase tracking-wide mb-1.5 pl-1">
-              Subject *
-            </label>
-            <input
-              type="text"
-              required
-              placeholder="e.g. Physics, Cardiology, Chemistry"
-              value={subject}
-              onChange={(e) => setSubject(e.target.value)}
-              className="w-full px-4 py-3 rounded-2xl bg-violet-950/20 border border-violet-500/30 text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:border-violet-500 text-base font-bold transition-all"
-            />
-
-            {/* Subject Quick Suggestions */}
-            <div className="flex flex-wrap gap-1.5 mt-2">
-              {SUBJECT_SUGGESTIONS.slice(0, 5).map((s) => (
+        <div className="space-y-4">
+          {/* Subject Selector / Input */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between pl-1">
+              <label className="text-xs font-bold text-violet-400 uppercase tracking-wide">
+                Subject *
+              </label>
+              {userSubjects.length > 0 && (
                 <button
-                  key={s}
                   type="button"
-                  onClick={() => setSubject(s)}
-                  className={`text-[11px] font-bold px-2 py-0.5 rounded-md border transition-all ${
-                    subject === s
-                      ? "bg-violet-600 border-violet-500 text-white"
-                      : "bg-white/5 border-white/5 text-muted-foreground hover:text-foreground"
-                  }`}
+                  onClick={() => {
+                    setIsCustomSubject(!isCustomSubject);
+                    if (!isCustomSubject) setSubject("");
+                    else if (userSubjects[0]) setSubject(userSubjects[0].name);
+                  }}
+                  className="text-[11px] font-bold text-violet-300 hover:text-white transition-colors"
                 >
-                  {s}
+                  {isCustomSubject ? "← Choose existing" : "+ Type new"}
                 </button>
-              ))}
+              )}
             </div>
+
+            {userSubjects.length > 0 && !isCustomSubject ? (
+              <div className="space-y-2">
+                <select
+                  value={subject}
+                  onChange={(e) => {
+                    const chosen = e.target.value;
+                    if (chosen === "__custom__") {
+                      setIsCustomSubject(true);
+                      setSubject("");
+                      setTopic("");
+                    } else {
+                      setSubject(chosen);
+                      const subObj = userSubjects.find((s) => s.name === chosen);
+                      if (subObj && subObj.topics.length > 0) {
+                        setTopic(subObj.topics[0]);
+                        setIsCustomTopic(false);
+                      } else {
+                        setTopic("");
+                      }
+                    }
+                  }}
+                  className="w-full px-4 py-3 rounded-2xl bg-violet-950/40 border border-violet-500/40 text-foreground font-bold text-sm focus:outline-none focus:border-violet-400 transition-all cursor-pointer shadow-sm"
+                >
+                  {userSubjects.map((s) => (
+                    <option key={s.id} value={s.name} className="bg-zinc-900 text-white font-bold">
+                      {s.name} ({s.topics.length} topic{s.topics.length === 1 ? "" : "s"})
+                    </option>
+                  ))}
+                  <option value="__custom__" className="bg-zinc-900 text-violet-400 font-bold">
+                    + Type new subject...
+                  </option>
+                </select>
+
+                {/* Quick Subject Chips */}
+                <div className="flex flex-wrap gap-1.5">
+                  {userSubjects.map((s) => (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => {
+                        setSubject(s.name);
+                        if (s.topics.length > 0) {
+                          setTopic(s.topics[0]);
+                          setIsCustomTopic(false);
+                        } else {
+                          setTopic("");
+                        }
+                      }}
+                      className={`text-xs font-bold px-2.5 py-1 rounded-xl border transition-all ${
+                        subject.toLowerCase() === s.name.toLowerCase()
+                          ? "bg-violet-600 border-violet-500 text-white shadow-sm shadow-violet-600/30"
+                          : "bg-white/5 border-white/10 text-muted-foreground hover:text-foreground hover:bg-white/10"
+                      }`}
+                    >
+                      {s.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Physics, Cardiology, Mathematics"
+                  value={subject}
+                  onChange={(e) => setSubject(e.target.value)}
+                  className="w-full px-4 py-3 rounded-2xl bg-violet-950/20 border border-violet-500/30 text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:border-violet-500 text-base font-bold transition-all"
+                />
+                {SUBJECT_SUGGESTIONS.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    {SUBJECT_SUGGESTIONS.slice(0, 5).map((s) => (
+                      <button
+                        key={s}
+                        type="button"
+                        onClick={() => setSubject(s)}
+                        className={`text-[11px] font-bold px-2 py-0.5 rounded-md border transition-all ${
+                          subject === s
+                            ? "bg-violet-600 border-violet-500 text-white"
+                            : "bg-white/5 border-white/5 text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
-          {/* Topic Input */}
-          <div>
-            <label className="block text-xs font-bold text-violet-400 uppercase tracking-wide mb-1.5 pl-1">
-              Topic *
-            </label>
-            <input
-              type="text"
-              required
-              placeholder="e.g. Thermodynamics, Heart Failure, Organic Reactions"
-              value={topic}
-              onChange={(e) => setTopic(e.target.value)}
-              className="w-full px-4 py-3 rounded-2xl bg-violet-950/20 border border-violet-500/30 text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:border-violet-500 text-base font-bold transition-all"
-            />
+          {/* Topic Selector / Input */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between pl-1">
+              <label className="text-xs font-bold text-violet-400 uppercase tracking-wide">
+                Topic *
+              </label>
+              {availableTopics.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsCustomTopic(!isCustomTopic);
+                    if (!isCustomTopic) setTopic("");
+                    else if (availableTopics[0]) setTopic(availableTopics[0]);
+                  }}
+                  className="text-[11px] font-bold text-violet-300 hover:text-white transition-colors"
+                >
+                  {isCustomTopic ? "← Choose from subject" : "+ Type custom"}
+                </button>
+              )}
+            </div>
+
+            {availableTopics.length > 0 && !isCustomTopic ? (
+              <div className="space-y-2">
+                <select
+                  value={topic}
+                  onChange={(e) => {
+                    const chosen = e.target.value;
+                    if (chosen === "__custom__") {
+                      setIsCustomTopic(true);
+                      setTopic("");
+                    } else {
+                      setTopic(chosen);
+                    }
+                  }}
+                  className="w-full px-4 py-3 rounded-2xl bg-violet-950/40 border border-violet-500/40 text-foreground font-bold text-sm focus:outline-none focus:border-violet-400 transition-all cursor-pointer shadow-sm"
+                >
+                  {availableTopics.map((t) => (
+                    <option key={t} value={t} className="bg-zinc-900 text-white font-semibold">
+                      {t}
+                    </option>
+                  ))}
+                  <option value="__custom__" className="bg-zinc-900 text-violet-400 font-bold">
+                    + Type new topic...
+                  </option>
+                </select>
+
+                {/* Quick Topic Chips */}
+                <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
+                  {availableTopics.map((t) => (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => setTopic(t)}
+                      className={`text-xs font-semibold px-2.5 py-1 rounded-xl border transition-all ${
+                        topic.toLowerCase() === t.toLowerCase()
+                          ? "bg-violet-600 border-violet-500 text-white shadow-sm shadow-violet-600/30"
+                          : "bg-white/5 border-white/10 text-muted-foreground hover:text-foreground hover:bg-white/10"
+                      }`}
+                    >
+                      {t}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <input
+                type="text"
+                required
+                placeholder="e.g. Thermodynamics, Heart Failure, Organic Reactions"
+                value={topic}
+                onChange={(e) => setTopic(e.target.value)}
+                className="w-full px-4 py-3 rounded-2xl bg-violet-950/20 border border-violet-500/30 text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:border-violet-500 text-base font-bold transition-all"
+              />
+            )}
           </div>
 
           {/* Optional Custom Block Label / Headline */}
