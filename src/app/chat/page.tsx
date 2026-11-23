@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import {
   ArrowUp,
   Sparkles,
@@ -22,8 +23,9 @@ import {
   Clock,
   BookOpen,
   SquarePen,
+  Zap,
 } from "lucide-react";
-import VoicePill from "@/components/ui/VoicePill";
+import { VoiceDictation } from "@/components/ui/VoiceDictation";
 import { AppShell, NavMenu } from "@/components/NavMenu";
 import {
   sendChatMessage,
@@ -35,12 +37,6 @@ import {
   saveDbChatMessage,
 } from "@/app/actions/ai-chat";
 import { getAiProfile } from "@/app/actions/ai-profile";
-import {
-  getAiAssistantName,
-  upsertBlock,
-  generateBlockId,
-  formatDateKey,
-} from "@/lib/routineStorage";
 import Link from "next/link";
 import { playCorrectSound, playTapSound } from "@/lib/gameSounds";
 
@@ -51,34 +47,11 @@ interface ChatSession {
   messages: ChatMessage[];
 }
 
-const CHAT_SESSIONS_KEY = "mcq_chat_sessions_v3";
-
-function loadSavedSessions(): ChatSession[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = localStorage.getItem(CHAT_SESSIONS_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveSessionsToStorage(sessions: ChatSession[]) {
-  if (typeof window === "undefined") return;
-  try {
-    localStorage.setItem(CHAT_SESSIONS_KEY, JSON.stringify(sessions));
-  } catch (e) {
-    console.error("Failed to save chat sessions:", e);
-  }
-}
-
 function createWelcomeMessage(aiName: string): ChatMessage {
   return {
     id: "welcome",
     role: "assistant",
-    content: `👋 Hello! I'm **${aiName}**, your personal study coach.\n\nI can help you prepare for exams, master tricky topics, and organize your daily life:\n• **Generate MCQs**: Say *"Make 5 MCQs on Cell Division"* or paste your notes\n• **Plan Routine**: Say *"Build my schedule for today"* or *"Add a 2-hour Math block at 4 PM"*\n• **Remember Habits**: Say *"Remember that I have Physics coaching on Mondays at 3 PM"*\n• **Explain Topics**: Ask any question in Physics, Chemistry, Biology, Math, or Accounting!`,
+    content: `👋 Hello! I'm **${aiName}**, your personal study coach.\n\nI can help you prepare for exams, master tricky topics, and organize your daily life:\n• **Generate MCQs**: Say *"Make 5 MCQs on Cell Division"* or paste your notes\n• **Plan Routine**: Say *"Build my schedule for today: going out 3 to 6 PM, exam in 2 weeks"*\n• **Remember Habits**: Say *"Remember that I have Physics coaching on Mondays at 3 PM"*\n• **Check Stats**: Say *"How many coins do I have?"* or *"Did I miss studying?"*`,
     timestamp: 0,
   };
 }
@@ -206,32 +179,21 @@ function renderFormattedSpans(text: string) {
 }
 
 export default function ChatPage() {
-  const [aiName, setAiName] = useState<string>(() => getAiAssistantName());
-  const [sessions, setSessions] = useState<ChatSession[]>(() => {
-    const loaded = loadSavedSessions();
-    if (loaded.length > 0) return loaded;
-    return [createNewSession(getAiAssistantName(), "sess_initial")];
-  });
-  const [activeSessionId, setActiveSessionId] = useState<string>(() => {
-    const loaded = loadSavedSessions();
-    return loaded.length > 0 ? loaded[0].id : "sess_initial";
-  });
+  const router = useRouter();
+  const [aiName, setAiName] = useState<string>("AI Assistant");
+  const [sessions, setSessions] = useState<ChatSession[]>(() => [
+    createNewSession("AI Assistant", "sess_initial"),
+  ]);
+  const [activeSessionId, setActiveSessionId] = useState<string>("sess_initial");
   const [isTemporaryChat, setIsTemporaryChat] = useState<boolean>(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  const [messages, setMessages] = useState<ChatMessage[]>(() => {
-    const loaded = loadSavedSessions();
-    return loaded.length > 0
-      ? loaded[0].messages
-      : [createWelcomeMessage(getAiAssistantName())];
-  });
+  const [messages, setMessages] = useState<ChatMessage[]>(() => [
+    createWelcomeMessage("AI Assistant"),
+  ]);
   const [input, setInput] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
-
-  // Voice dictation state
-  const [isListening, setIsListening] = useState(false);
-  const recognitionRef = useRef<{ stop: () => void } | null>(null);
 
   // In-chat Interactive Quiz Modal state
   const [activeQuiz, setActiveQuiz] = useState<GeneratedQuiz | null>(null);
@@ -256,8 +218,21 @@ export default function ChatPage() {
     }
   }, [input]);
 
-  // Load user profile & PostgreSQL sessions on mount
+  // Load user profile & PostgreSQL sessions on mount, purge legacy browser storage
   useEffect(() => {
+    // Purge any legacy browser storage from other accounts to guarantee 100% privacy
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.removeItem("mcq_chat_sessions_v3");
+        localStorage.removeItem("mcq_ai_chat_sessions");
+        localStorage.removeItem("mcq_arena_routine_blocks_v1");
+        localStorage.removeItem("mcq_routine_ai_permanent_notes_v1");
+        localStorage.removeItem("mcq_ai_assistant_name_v1");
+        localStorage.removeItem("mcq_routine_presets_v1");
+        localStorage.removeItem("mcq_topic_mastery_v1");
+      } catch {}
+    }
+
     getAiProfile()
       .then((p) => {
         if (p?.aiName) {
@@ -284,7 +259,7 @@ export default function ChatPage() {
     if (isTemporaryChat || !activeSessionId) return;
 
     setSessions((prev) => {
-      const updated = prev.map((s) => {
+      return prev.map((s) => {
         if (s.id === activeSessionId) {
           const firstUserMsg = newMessages.find((m) => m.role === "user");
           const title = firstUserMsg
@@ -299,93 +274,44 @@ export default function ChatPage() {
         }
         return s;
       });
-      saveSessionsToStorage(updated);
-      return updated;
     });
   };
 
-  // Voice Dictation Handlers (VoicePill integration)
-  const startSpeechRecognition = () => {
-    const SpeechRecognition =
-      (window as unknown as { SpeechRecognition?: unknown; webkitSpeechRecognition?: unknown })
-        .SpeechRecognition ||
-      (window as unknown as { SpeechRecognition?: unknown; webkitSpeechRecognition?: unknown })
-        .webkitSpeechRecognition;
+  const handleLaunchFullSession = (quiz: GeneratedQuiz) => {
+    const sessionQuestions = quiz.questions.map((q, idx) => ({
+      id: `q_ai_${idx}_${Date.now()}`,
+      question: q.question,
+      options: {
+        A: q.options[0] || "",
+        B: q.options[1] || "",
+        C: q.options[2] || "",
+        D: q.options[3] || "",
+      },
+      answer: ["A", "B", "C", "D"][q.answerIndex] || "A",
+      subjectName: quiz.subject || "General",
+      topicName: quiz.topic || quiz.title || "AI Practice",
+    }));
 
-    if (!SpeechRecognition) {
-      console.warn("Speech recognition not supported in this browser.");
-      return;
+    if (typeof window !== "undefined") {
+      sessionStorage.setItem(
+        "current_mcq_session",
+        JSON.stringify({
+          questions: sessionQuestions,
+          isPractice: true,
+          subjectName: quiz.subject || "AI Generated",
+          topicName: quiz.topic || quiz.title || "AI Quiz",
+          clientSessionToken: `sess_ai_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+        })
+      );
+      sessionStorage.removeItem("mcq_session_progress");
     }
-
-    try {
-      const recognition = new (SpeechRecognition as new () => {
-        continuous: boolean;
-        interimResults: boolean;
-        lang: string;
-        onresult: (e: {
-          results: Array<{
-            [index: number]: { transcript: string };
-            isFinal: boolean;
-          }>;
-        }) => void;
-        onerror: (e: { error: string }) => void;
-        onend: () => void;
-        start: () => void;
-        stop: () => void;
-      })();
-
-      recognition.continuous = true;
-      recognition.interimResults = true;
-      recognition.lang = "en-US";
-
-      recognition.onresult = (event) => {
-        let transcript = "";
-        for (let i = 0; i < event.results.length; i++) {
-          transcript += event.results[i][0].transcript;
-        }
-        setInput(transcript);
-      };
-
-      recognition.onerror = (e) => {
-        console.warn("Speech recognition error:", e.error);
-        setIsListening(false);
-      };
-
-      recognition.onend = () => {
-        setIsListening(false);
-      };
-
-      recognition.start();
-      recognitionRef.current = recognition;
-      setIsListening(true);
-    } catch (err) {
-      console.error("Failed to start speech recognition:", err);
-      setIsListening(false);
-    }
-  };
-
-  const stopSpeechRecognition = (reason: string) => {
-    if (recognitionRef.current) {
-      try {
-        recognitionRef.current.stop();
-      } catch {}
-      recognitionRef.current = null;
-    }
-    setIsListening(false);
-    if (reason === "cancel") {
-      setInput("");
-    }
+    router.push("/session/play");
   };
 
   // Send Message Handler
   const handleSend = async (customPrompt?: string) => {
     const textToSend = (customPrompt || input).trim();
     if (!textToSend || isSending) return;
-
-    if (isListening && recognitionRef.current) {
-      recognitionRef.current.stop();
-      setIsListening(false);
-    }
 
     const userMsg: ChatMessage = {
       id: "usr_" + Date.now().toString(36),
@@ -418,29 +344,13 @@ export default function ChatPage() {
         isTemporaryChat ? undefined : activeSessionId
       );
 
-      // Execute AI scheduled block if suggested
-      if (res.actionTaken?.type === "added_block" && res.actionTaken.blockData) {
-        try {
-          const rawBlock = res.actionTaken.blockData;
-          const newBlock = {
-            id: generateBlockId(),
-            date: formatDateKey(new Date()),
-            type: rawBlock.type || "study",
-            title: rawBlock.title || "Study Session",
-            timeMode: "range" as const,
-            startTime: rawBlock.startTime || "15:00",
-            endTime: rawBlock.endTime || "16:00",
-            isCompleted: false,
-            subject: rawBlock.subject,
-            topic: rawBlock.topic,
-            notes: rawBlock.notes,
-            subtasks: [],
-            order: Date.now(),
-            createdAt: Date.now(),
-          };
-          upsertBlock(newBlock);
-        } catch (e) {
-          console.warn("Failed to schedule routine block from chat:", e);
+      // If AI updated routine blocks or generated schedule, notify routine listeners
+      if (
+        res.actionTaken?.type === "generated_schedule" ||
+        res.actionTaken?.type === "added_block"
+      ) {
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("routine-blocks-updated"));
         }
       }
 
@@ -479,7 +389,6 @@ export default function ChatPage() {
 
     setSessions((prev) => {
       const updated = [newSession, ...prev];
-      saveSessionsToStorage(updated);
       return updated;
     });
 
@@ -503,7 +412,6 @@ export default function ChatPage() {
     e.stopPropagation();
     deleteDbChatSession(id).catch(console.warn);
     const filtered = sessions.filter((s) => s.id !== id);
-    saveSessionsToStorage(filtered);
     setSessions(filtered);
 
     if (activeSessionId === id) {
@@ -875,18 +783,54 @@ export default function ChatPage() {
                                 </span>
                               </div>
 
-                              <h4 className="text-sm font-bold text-white">
-                                {m.generatedQuiz.title}
-                              </h4>
+                              <div>
+                                <h4 className="text-sm font-bold text-white">
+                                  {m.generatedQuiz.title}
+                                </h4>
+                                <span className="text-[11px] text-neutral-400">
+                                  Saved in Question Bank under {m.generatedQuiz.subject || "General"}
+                                </span>
+                              </div>
 
-                              <button
-                                type="button"
-                                onClick={() => handleStartQuiz(m.generatedQuiz!)}
-                                className="w-full py-2.5 px-4 rounded-xl bg-white text-black font-semibold text-xs flex items-center justify-center gap-2 hover:bg-neutral-200 active:scale-95 transition-all shadow-md"
+                              <div className="grid grid-cols-2 gap-2 pt-1">
+                                <button
+                                  type="button"
+                                  onClick={() => handleStartQuiz(m.generatedQuiz!)}
+                                  className="py-2.5 px-3 rounded-xl bg-white/10 hover:bg-white/15 text-white font-semibold text-xs flex items-center justify-center gap-1.5 transition-all"
+                                >
+                                  <Play className="w-3.5 h-3.5 fill-current" />
+                                  <span>Practice in Chat</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleLaunchFullSession(m.generatedQuiz!)}
+                                  className="py-2.5 px-3 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-semibold text-xs flex items-center justify-center gap-1.5 transition-all shadow-md shadow-violet-600/30 active:scale-95"
+                                >
+                                  <Zap className="w-3.5 h-3.5 fill-current" />
+                                  <span>Start MCQ Session</span>
+                                </button>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Generated Schedule Card */}
+                          {m.actionTaken?.type === "generated_schedule" && (
+                            <div className="mt-3 p-4 rounded-2xl bg-gradient-to-br from-violet-950/40 to-black/40 border border-violet-500/30 space-y-3 max-w-lg shadow-lg shadow-black/20">
+                              <div className="flex items-center gap-2 text-violet-300 font-bold text-xs uppercase tracking-wider">
+                                <Calendar className="w-4 h-4 text-violet-400" />
+                                <span>Daily Routine Updated</span>
+                              </div>
+                              <p className="text-xs text-neutral-300 leading-relaxed">
+                                {m.actionTaken.scheduleSummary ||
+                                  "Your personalized routine blocks have been generated and saved to your database."}
+                              </p>
+                              <Link
+                                href="/routine"
+                                className="inline-flex items-center justify-center gap-2 w-full py-2.5 px-4 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-xs font-bold transition-all shadow-md shadow-violet-600/20 active:scale-95"
                               >
-                                <Play className="w-3.5 h-3.5 fill-current" />
-                                <span>Start Practice Quiz</span>
-                              </button>
+                                <Calendar className="w-3.5 h-3.5" />
+                                <span>Open Daily Routine Schedule →</span>
+                              </Link>
                             </div>
                           )}
 
@@ -964,48 +908,21 @@ export default function ChatPage() {
           {/*  CHATGPT SIGNATURE FLOATING INPUT BAR                            */}
           {/* ================================================================= */}
           <div className="p-4 max-w-3xl w-full mx-auto shrink-0">
-            {/* Listening State Banner */}
-            {isListening && (
-              <div className="mb-2 flex items-center justify-center gap-2 text-xs font-semibold text-rose-400 animate-pulse">
-                <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
-                <span>Listening to your voice... Speak now</span>
-              </div>
-            )}
-
             <form
               onSubmit={(e) => {
                 e.preventDefault();
                 handleSend();
               }}
-              className="relative rounded-[26px] bg-[#2f2f2f] border border-white/10 shadow-2xl focus-within:border-white/20 transition-all p-2 pl-4"
+              className="relative rounded-[26px] bg-[#2f2f2f] border border-white/10 shadow-2xl focus-within:border-white/20 transition-all p-2 pl-3.5"
             >
-              <div className="flex items-end gap-2">
-                {/* Voice Dictation VoicePill (React Bits) */}
-                <div className="mb-0.5 shrink-0 flex items-center">
-                  <VoicePill
-                    accentColor="#8b5cf6"
-                    iconColor="#a1a1aa"
-                    background="#232326"
-                    size={30}
-                    shape="pill"
-                    reach={8}
-                    showTime
-                    waveform
-                    slideToCancel
-                    cancelDistance={64}
-                    attack={40}
-                    release={240}
-                    sensitivity={1}
-                    floor={0.1}
-                    openDuration={200}
-                    pressScale={0.95}
-                    mode="auto"
-                    reactive="mic"
-                    ariaLabel="Voice dictation"
-                    onStart={() => startSpeechRecognition()}
-                    onStop={({ reason }) => stopSpeechRecognition(reason)}
-                  />
-                </div>
+              <div className="flex items-center gap-2">
+                {/* Voice Dictation Button */}
+                <VoiceDictation
+                  onTranscriptChange={(text) => setInput(text)}
+                  onSend={(text) => handleSend(text)}
+                  disabled={isSending}
+                  className="shrink-0"
+                />
 
                 {/* Multiline auto-expanding textarea */}
                 <textarea
@@ -1028,7 +945,7 @@ export default function ChatPage() {
                 <button
                   type="submit"
                   disabled={isSending || !input.trim()}
-                  className="w-8 h-8 rounded-full bg-white text-black flex items-center justify-center hover:bg-neutral-200 active:scale-95 transition-all disabled:bg-[#3f3f3f] disabled:text-[#8e8e8e] disabled:cursor-not-allowed mb-0.5 shrink-0 shadow-sm"
+                  className="w-8 h-8 rounded-full bg-white text-black flex items-center justify-center hover:bg-neutral-200 active:scale-95 transition-all disabled:bg-[#3f3f3f] disabled:text-[#8e8e8e] disabled:cursor-not-allowed shrink-0 shadow-sm"
                   aria-label="Send"
                 >
                   <ArrowUp className="w-4 h-4 stroke-[2.5]" />

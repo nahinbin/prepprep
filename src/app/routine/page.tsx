@@ -19,11 +19,6 @@ import { RoutineBlock, BlockType } from "@/lib/routineTypes";
 import {
   formatDateKey,
   formatHumanDate,
-  getAllBlocks,
-  upsertBlock,
-  toggleBlockCompletion,
-  toggleSubtask,
-  deleteBlock,
 } from "@/lib/routineStorage";
 import { getTopicMastery } from "@/lib/topicProgressStorage";
 import { BlockCard } from "@/components/routine/BlockCard";
@@ -40,20 +35,16 @@ import {
   deleteDbRoutineBlock,
 } from "@/app/actions/routine";
 
-/** Lightweight store for routine blocks syncing with PostgreSQL and local state */
-function useRoutineBlocks(): RoutineBlock[] {
-  const [blocks, setBlocks] = useState<RoutineBlock[]>(() =>
-    typeof window !== "undefined" ? getAllBlocks() : []
-  );
+/** Hook for routine blocks backed strictly by PostgreSQL, with zero unauthenticated browser storage leaks */
+function useRoutineBlocks() {
+  const [blocks, setBlocks] = useState<RoutineBlock[]>([]);
 
-  useEffect(() => {
-    // 1. Fetch from DB
+  const refreshBlocks = () => {
     getUserRoutineBlocks()
       .then((dbBlocks) => {
-        if (dbBlocks && dbBlocks.length > 0) {
-          // Sync DB blocks into storage and state
-          for (const b of dbBlocks) {
-            upsertBlock({
+        if (dbBlocks) {
+          setBlocks(
+            dbBlocks.map((b) => ({
               id: b.id,
               date: b.date,
               type: b.type,
@@ -68,23 +59,33 @@ function useRoutineBlocks(): RoutineBlock[] {
               subtasks: b.subtasks,
               order: b.order,
               createdAt: Date.now(),
-            });
-          }
-          setBlocks(getAllBlocks());
+            }))
+          );
         }
       })
       .catch((e) => console.warn("Failed to load routine blocks from DB:", e));
+  };
 
-    const refresh = () => setBlocks(getAllBlocks());
-    window.addEventListener("routine-blocks-updated", refresh);
-    window.addEventListener("storage", refresh);
+  useEffect(() => {
+    // Purge legacy browser storage from other accounts to guarantee 100% privacy
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.removeItem("mcq_arena_routine_blocks_v1");
+        localStorage.removeItem("mcq_routine_ai_permanent_notes_v1");
+        localStorage.removeItem("mcq_ai_assistant_name_v1");
+        localStorage.removeItem("mcq_routine_presets_v1");
+        localStorage.removeItem("mcq_topic_mastery_v1");
+      } catch {}
+    }
+
+    refreshBlocks();
+    window.addEventListener("routine-blocks-updated", refreshBlocks);
     return () => {
-      window.removeEventListener("routine-blocks-updated", refresh);
-      window.removeEventListener("storage", refresh);
+      window.removeEventListener("routine-blocks-updated", refreshBlocks);
     };
   }, []);
 
-  return blocks;
+  return { blocks, setBlocks, refreshBlocks };
 }
 
 export default function RoutinePage() {
@@ -93,8 +94,8 @@ export default function RoutinePage() {
     formatDateKey(new Date())
   );
 
-  // Subscribe to routine blocks via lightweight event-driven hook
-  const allBlocks = useRoutineBlocks();
+  // Subscribe to routine blocks via lightweight hook backed strictly by PostgreSQL
+  const { blocks: allBlocks, setBlocks: setAllBlocks, refreshBlocks } = useRoutineBlocks();
 
   // Modals state
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
@@ -168,7 +169,7 @@ export default function RoutinePage() {
     setSelectedDate(formatDateKey(new Date()));
   };
 
-  // Block actions
+  // Block actions backed strictly by PostgreSQL
   const handleToggleComplete = (id: string) => {
     const target = blocks.find((b) => b.id === id);
     // If it's a study block and not yet completed, ask about topic completion
@@ -180,25 +181,50 @@ export default function RoutinePage() {
       });
       return;
     }
-    toggleBlockCompletion(id);
+    setAllBlocks((prev) =>
+      prev.map((b) => (b.id === id ? { ...b, isCompleted: !b.isCompleted } : b))
+    );
     toggleDbRoutineBlockCompleted(id).catch(console.warn);
   };
 
   const handleTopicCompletionConfirmed = () => {
     if (completingStudyBlock) {
-      toggleBlockCompletion(completingStudyBlock.id);
-      toggleDbRoutineBlockCompleted(completingStudyBlock.id).catch(console.warn);
+      const targetId = completingStudyBlock.id;
+      setAllBlocks((prev) =>
+        prev.map((b) => (b.id === targetId ? { ...b, isCompleted: true } : b))
+      );
+      toggleDbRoutineBlockCompleted(targetId).catch(console.warn);
       setCompletingStudyBlock(null);
     }
   };
 
   const handleToggleSubtask = (blockId: string, subtaskId: string) => {
-    toggleSubtask(blockId, subtaskId);
+    setAllBlocks((prev) =>
+      prev.map((b) => {
+        if (b.id === blockId && b.subtasks) {
+          return {
+            ...b,
+            subtasks: b.subtasks.map((st) =>
+              st.id === subtaskId ? { ...st, completed: !st.completed } : st
+            ),
+          };
+        }
+        return b;
+      })
+    );
     toggleDbRoutineSubtask(blockId, subtaskId).catch(console.warn);
   };
 
   const handleSaveBlock = (block: RoutineBlock) => {
-    upsertBlock(block);
+    setAllBlocks((prev) => {
+      const idx = prev.findIndex((b) => b.id === block.id);
+      if (idx >= 0) {
+        const copy = [...prev];
+        copy[idx] = block;
+        return copy;
+      }
+      return [...prev, block];
+    });
     upsertDbRoutineBlock({
       id: block.id,
       date: block.date,
@@ -217,7 +243,7 @@ export default function RoutinePage() {
   };
 
   const handleDeleteBlock = (id: string) => {
-    deleteBlock(id);
+    setAllBlocks((prev) => prev.filter((b) => b.id !== id));
     deleteDbRoutineBlock(id).catch(console.warn);
   };
 
@@ -235,29 +261,7 @@ export default function RoutinePage() {
 
   const handleScheduleGeneratedByAi = (summary: string) => {
     setAiToast({ summary });
-    // Also re-fetch DB blocks
-    getUserRoutineBlocks().then((dbBlocks) => {
-      if (dbBlocks && dbBlocks.length > 0) {
-        for (const b of dbBlocks) {
-          upsertBlock({
-            id: b.id,
-            date: b.date,
-            type: b.type,
-            title: b.title,
-            timeMode: b.timeMode,
-            startTime: b.startTime,
-            endTime: b.endTime,
-            isCompleted: b.isCompleted,
-            subject: b.subject,
-            topic: b.topic,
-            notes: b.notes,
-            subtasks: b.subtasks,
-            order: b.order,
-            createdAt: Date.now(),
-          });
-        }
-      }
-    }).catch(console.warn);
+    refreshBlocks();
   };
 
   // Date metadata

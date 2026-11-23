@@ -1,14 +1,15 @@
 "use server";
 
 import { generateGeminiJson, isGeminiConfigured } from "@/lib/gemini";
-import { getUserSubjectsAndTopics } from "@/app/actions/subjects";
+import { getSession } from "@/app/actions/auth";
+import { prisma } from "@/lib/prisma";
 
 export interface GenerateAiScheduleParams {
   dateKey: string;
   dayOfWeek: string;
-  permanentNotes: string;
+  permanentNotes?: string;
   todayNote?: string;
-  topicMastery: Record<
+  topicMastery?: Record<
     string,
     { percentage: number; isCompleted: boolean; subjectName: string; topicName: string }
   >;
@@ -38,52 +39,94 @@ export interface GenerateAiScheduleResult {
 export async function generateAiDailySchedule(
   params: GenerateAiScheduleParams
 ): Promise<GenerateAiScheduleResult> {
-  const {
-    dateKey,
-    dayOfWeek = "Today",
-    permanentNotes = "",
-    todayNote = "",
-    topicMastery = {},
-    clientSubjects,
-  } = params;
-
-  // 1. Fetch user subjects from DB or fallback to client provided
-  let subjects = await getUserSubjectsAndTopics();
-  if (subjects.length === 0 && clientSubjects && clientSubjects.length > 0) {
-    subjects = clientSubjects.map((s, idx) => ({
-      id: `client_${idx}`,
-      name: s.name,
-      topics: s.topics,
-    }));
+  const user = await getSession();
+  if (!user) {
+    return {
+      success: false,
+      summary: "",
+      blocks: [],
+      generatedBy: "smart-engine",
+      error: "You must be logged in to generate a personalized daily schedule.",
+    };
   }
 
-  // Fallback default subjects if user hasn't added any yet
+  const { dateKey, dayOfWeek = "Today", todayNote = "" } = params;
+
+  // 1. Fetch user's permanent notes and profile info directly from PostgreSQL
+  const dbUser = await prisma.user.findUnique({
+    where: { id: user.id },
+    select: {
+      name: true,
+      bio: true,
+      aiNotepad: true,
+      aiName: true,
+    },
+  });
+
+  const permanentNotes = (
+    (params.permanentNotes?.trim() || "") +
+    (dbUser?.aiNotepad?.trim() ? `\n${dbUser.aiNotepad.trim()}` : "")
+  ).trim();
+
+  // 2. Fetch user's actual database subjects and topics strictly scoped to this user
+  const dbSubjects = await prisma.subject.findMany({
+    where: { userId: user.id },
+    include: {
+      topics: {
+        select: { id: true, name: true },
+        orderBy: { name: "asc" },
+      },
+    },
+    orderBy: { name: "asc" },
+  });
+
+  // If user has subjects in PostgreSQL, use ONLY their subjects
+  let subjects = dbSubjects.map((s) => ({
+    id: s.id,
+    name: s.name,
+    topics: s.topics.map((t) => t.name),
+  }));
+
+  // If user has no subjects in DB, check bio or fall back
   if (subjects.length === 0) {
-    subjects = [
-      {
-        id: "sub_1",
-        name: "Physics",
-        topics: ["Kinematics & Dynamics", "Thermodynamics", "Wave Optics", "Electromagnetism"],
-      },
-      {
-        id: "sub_2",
-        name: "Chemistry",
-        topics: ["Organic Reaction Mechanisms", "Chemical Kinetics", "Coordination Compounds", "Periodic Trends"],
-      },
-      {
-        id: "sub_3",
-        name: "Mathematics",
-        topics: ["Calculus & Integrals", "Differential Equations", "Vectors & 3D Geometry", "Probability"],
-      },
-      {
-        id: "sub_4",
-        name: "Biology",
-        topics: ["Genetics & Heredity", "Human Physiology", "Cell Biology", "Ecology & Evolution"],
-      },
-    ];
+    if (params.clientSubjects && params.clientSubjects.length > 0) {
+      subjects = params.clientSubjects.map((s, idx) => ({
+        id: `custom_${idx}`,
+        name: s.name,
+        topics: s.topics,
+      }));
+    } else {
+      subjects = [
+        {
+          id: "sub_1",
+          name: "General Studies",
+          topics: ["Core Concepts & Notes", "High Yield Practice", "Mistake Review", "Mock Questions"],
+        },
+      ];
+    }
   }
 
-  // 2. Build topic status breakdown for prompt (exclude 100% completed)
+  // 3. Fetch topic mastery directly from PostgreSQL for this user
+  const dbMasteries = await prisma.topicMasteryRecord.findMany({
+    where: { userId: user.id },
+  });
+
+  const topicMasteryMap: Record<string, number> = {};
+  for (const m of dbMasteries) {
+    const key = `${m.subject.trim().toLowerCase()}:::${m.topic.trim().toLowerCase()}`;
+    topicMasteryMap[key] = m.percentage;
+  }
+
+  // Also include any client-passed mastery if present
+  if (params.topicMastery) {
+    for (const [k, v] of Object.entries(params.topicMastery)) {
+      if (topicMasteryMap[k] === undefined) {
+        topicMasteryMap[k] = v.percentage;
+      }
+    }
+  }
+
+  // 4. Build topic status breakdown
   const topicListWithStatus: Array<{
     subject: string;
     topic: string;
@@ -94,8 +137,7 @@ export async function generateAiDailySchedule(
   for (const sub of subjects) {
     for (const top of sub.topics) {
       const key = `${sub.name.trim().toLowerCase()}:::${top.trim().toLowerCase()}`;
-      const rec = topicMastery[key];
-      const pct = rec ? rec.percentage : 0;
+      const pct = topicMasteryMap[key] ?? 0;
       if (pct >= 100) {
         topicListWithStatus.push({
           subject: sub.name,
@@ -124,46 +166,61 @@ export async function generateAiDailySchedule(
   const eligibleTopics = topicListWithStatus.filter((t) => t.status !== "completed");
   const completedTopics = topicListWithStatus.filter((t) => t.status === "completed");
 
-  // 3. Try Gemini API first if configured
+  // 5. Try Gemini API with strict, unambiguous cognitive constraints
   if (isGeminiConfigured()) {
     try {
-      const prompt = `You are an elite academic coach and daily routine planner for a student preparing for competitive exams.
-Design a highly structured, 1-day routine for ${dayOfWeek}, ${dateKey}.
+      const prompt = `You are the student's elite personal academic strategist and daily schedule optimizer.
+You must construct an optimal, highly realistic 1-day routine for ${dayOfWeek}, ${dateKey}.
 
-PERMANENT RULES & WEEKLY COMMITMENTS (From Settings):
-${permanentNotes || "Standard student schedule. Healthy sleep by 11 PM."}
+STUDENT PROFILE:
+- Name: ${dbUser?.name || user.username}
+- Studying: ${dbUser?.bio || "General Studies / Exam Preparation"}
 
-TEMPORARY NOTE FOR TODAY:
+PERMANENT NOTES & WEEKLY COMMITMENTS (From Settings/Notepad):
+${permanentNotes || "None specified. Regular healthy student routine."}
+
+TEMPORARY NOTE / STUDENT'S WORDS FOR TODAY:
 ${todayNote || "None specified. Regular focused study day."}
 
-ELIGIBLE TOPICS TO STUDY (Topics NOT completed yet):
-${JSON.stringify(eligibleTopics.slice(0, 35), null, 2)}
+STUDENT'S ELIGIBLE SUBJECTS & UNFINISHED TOPICS IN DATABASE:
+${JSON.stringify(eligibleTopics.slice(0, 40), null, 2)}
 
 TOPICS ALREADY 100% COMPLETED (STRICT RULE: NEVER SCHEDULE THESE!):
 ${JSON.stringify(completedTopics.map((t) => `${t.subject} - ${t.topic}`), null, 2)}
 
-STRICT SCHEDULING RULES:
-1. NEVER schedule any topic that is in the COMPLETED list!
-2. Prioritize partially completed topics (${eligibleTopics.filter((t) => t.status === "partial").map((t) => t.topic).join(", ") || "None"}) and give them appropriate focused time (e.g., 45-60 min) to finish them!
-3. If permanent notes specify coaching, school, or recurring classes on ${dayOfWeek}, accurately schedule those normal blocks.
-4. If the temporary note mentions events (e.g. dentist, exam, feeling tired), incorporate them thoughtfully.
-5. Include essential daily normal blocks: Wake up, breakfast, lunch, fresh air / break, dinner, sleep.
-6. For study blocks: set clear subject, topic, and concise high-yield subtasks.
+STRICT SCHEDULING RULES (DO NOT VIOLATE):
+1. ABSOLUTE TIME CONSTRAINTS & OUTINGS:
+   - If the student states in their temporary note or permanent notes that they are going out, having an appointment, attending classes, coaching, or busy during specific hours (e.g. "going out from 3 PM to 6 PM", "dentist at 2 PM", "at coaching 2:30 to 5 PM"), you MUST schedule a normal/event block for that EXACT time window.
+   - You MUST NEVER schedule any study blocks during the hours the student is busy or out!
+
+2. MULTI-SUBJECT DIVERSIFICATION (INTERLEAVING):
+   - NEVER stack the same subject for the whole day!
+   - If the student has 2 or more subjects, you MUST alternate and distribute study blocks across DIFFERENT subjects (e.g., Morning: Subject A, Afternoon: Subject B, Evening: Subject C or Arena session).
+   - Rotating subjects prevents mental fatigue and maximizes retention.
+
+3. EXAM PROXIMITY & TIMELINES:
+   - If the student mentions an upcoming exam date or timeline (e.g. "exam on Friday", "exam in 1 month", "have a test coming up"), calculate the urgency!
+   - Give higher priority, focused practice, and timed MCQ recall blocks to that exam's subject without completely neglecting other responsibilities.
+
+4. REALISTIC AND EMPATHETIC PACING:
+   - If the student mentions feeling tired, sick, having low energy, or limited hours, do NOT schedule intense 8-hour blocks. Use lighter 40-50 minute sprints with generous recovery periods.
+   - Never schedule topics in the COMPLETED list.
+   - Include vital daily blocks: Wake up, meals (Breakfast, Lunch, Dinner), wind-down, and a healthy sleep target (e.g. 11:00 PM).
 
 Output strictly valid JSON with this shape:
 {
-  "summary": "Short encouraging note explaining why today's plan is optimal",
+  "summary": "Warm, encouraging 1-2 sentence note explaining why this schedule is tailored to their exact notes, energy level, and exam goals.",
   "blocks": [
     {
       "type": "normal" | "study",
-      "title": "Block Title",
+      "title": "Block Title (e.g. 'Wake up & Morning Refresh', 'Physics Deep Focus', 'Going Out / Free Time', 'Biology MCQ Sprint')",
       "timeMode": "range" | "single",
-      "startTime": "07:00",
-      "endTime": "07:30",
-      "subject": "Physics",
-      "topic": "Kinematics",
-      "notes": "Target high-yield MCQs",
-      "subtasks": ["Solve 15 MCQs", "Formula review"]
+      "startTime": "HH:MM (24-hour e.g. 07:00, 14:30)",
+      "endTime": "HH:MM (24-hour e.g. 08:30, 17:00)",
+      "subject": "Subject Name (only for study blocks)",
+      "topic": "Topic Name (only for study blocks)",
+      "notes": "Target or description",
+      "subtasks": ["Action 1", "Action 2"]
     }
   ]
 }`;
@@ -171,12 +228,12 @@ Output strictly valid JSON with this shape:
       const aiResponse = await generateGeminiJson<{
         summary: string;
         blocks: GeneratedBlockDto[];
-      }>(prompt, { temperature: 0.3 });
+      }>(prompt, { temperature: 0.25 });
 
       if (aiResponse && Array.isArray(aiResponse.blocks) && aiResponse.blocks.length > 0) {
         return {
           success: true,
-          summary: aiResponse.summary || `Optimized schedule created for ${dayOfWeek}!`,
+          summary: aiResponse.summary || `Personalized schedule ready for ${dayOfWeek}!`,
           blocks: aiResponse.blocks,
           generatedBy: "gemini",
         };
@@ -186,107 +243,154 @@ Output strictly valid JSON with this shape:
     }
   }
 
-  // 4. Smart Heuristic Engine (Lightning-Fast Fallback)
-  const isCoachingDay =
-    (permanentNotes || "").toLowerCase().includes((dayOfWeek || "").toLowerCase()) ||
-    ["monday", "wednesday", "friday"].includes((dayOfWeek || "").toLowerCase());
+  // 6. Smart Heuristic Engine (Fallback when Gemini is unavailable)
+  // Parse user constraints from temporary note and permanent notes
+  const combinedText = `${permanentNotes} ${todayNote}`.toLowerCase();
 
-  const partialTopics = eligibleTopics.filter((t) => t.status === "partial");
-  const unstartedTopics = eligibleTopics.filter((t) => t.status === "not_started");
+  // Detect outing / busy window (e.g. "from 3 to 6", "from 15:00 to 18:00", "going out 2pm to 5pm")
+  let busyWindow: { start: string; end: string; title: string } | null = null;
+  const outingMatch = combinedText.match(
+    /(?:going\s+out|outing|appointment|dentist|event|busy|doctor|coaching|class)\s*(?:from|at)?\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)\s*(?:to|-)\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)/i
+  );
 
-  // Pick 2 to 3 study targets for the day
-  const chosenTargets: Array<{ subject: string; topic: string; durationMin: number; note: string }> = [];
+  const normalizeTime = (tStr: string): string => {
+    const isPm = tStr.toLowerCase().includes("pm");
+    const isAm = tStr.toLowerCase().includes("am");
+    const clean = tStr.replace(/[a-z\s]/gi, "");
+    let [hStr, mStr] = clean.split(":");
+    let h = parseInt(hStr, 10);
+    const m = mStr ? mStr.padStart(2, "0") : "00";
+    if (isPm && h < 12) h += 12;
+    if (isAm && h === 12) h = 0;
+    return `${String(h).padStart(2, "0")}:${m}`;
+  };
 
-  // Finish partial topics first
-  for (const pt of partialTopics.slice(0, 2)) {
-    chosenTargets.push({
-      subject: pt.subject,
-      topic: pt.topic,
-      durationMin: 60, // Shorter duration as user requested!
-      note: `Finish remaining ${100 - pt.percentage}% of this topic`,
-    });
+  if (outingMatch) {
+    busyWindow = {
+      start: normalizeTime(outingMatch[1]),
+      end: normalizeTime(outingMatch[2]),
+      title: "Outing / Scheduled Event",
+    };
   }
 
-  // Fill with unstarted topics
-  for (const ut of unstartedTopics.slice(0, 3 - chosenTargets.length)) {
-    chosenTargets.push({
-      subject: ut.subject,
-      topic: ut.topic,
-      durationMin: 90,
-      note: "Core concept mastery & question practice",
-    });
+  // Group eligible topics by subject to enforce multi-subject interleaving
+  const subjectsMap = new Map<string, Array<{ topic: string; percentage: number; status: string }>>();
+  for (const t of eligibleTopics) {
+    if (!subjectsMap.has(t.subject)) {
+      subjectsMap.set(t.subject, []);
+    }
+    subjectsMap.get(t.subject)!.push(t);
+  }
+
+  // Pick up to 3 study targets across DIFFERENT subjects
+  const chosenTargets: Array<{ subject: string; topic: string; note: string }> = [];
+  const subjectKeys = Array.from(subjectsMap.keys());
+
+  for (let i = 0; i < Math.min(3, subjectKeys.length); i++) {
+    const subName = subjectKeys[i];
+    const tops = subjectsMap.get(subName)!;
+    // Prefer partial topic, else first not started
+    const chosenTopic = tops.find((t) => t.status === "partial") || tops[0];
+    if (chosenTopic) {
+      chosenTargets.push({
+        subject: subName,
+        topic: chosenTopic.topic,
+        note:
+          chosenTopic.percentage > 0
+            ? `Finish remaining ${100 - chosenTopic.percentage}% of this topic`
+            : "Core concept notes & active recall",
+      });
+    }
+  }
+
+  // Fallback if user only had 1 subject: pick multiple topics from that subject
+  if (chosenTargets.length < 2 && eligibleTopics.length > 1) {
+    for (const t of eligibleTopics) {
+      if (!chosenTargets.some((ct) => ct.topic === t.topic)) {
+        chosenTargets.push({
+          subject: t.subject,
+          topic: t.topic,
+          note: "Targeted problem solving & recall",
+        });
+        if (chosenTargets.length >= 3) break;
+      }
+    }
   }
 
   const generatedBlocks: GeneratedBlockDto[] = [
     {
       type: "normal",
-      title: "Wake up & Hydrate",
+      title: "Wake up & Refresh",
       timeMode: "single",
-      startTime: "06:45",
-      notes: "Morning sunlight & water",
+      startTime: "07:00",
+      notes: "Hydrate & light stretch",
     },
     {
       type: "normal",
-      title: "Breakfast & Refresh",
+      title: "Breakfast & Fuel",
       timeMode: "range",
-      startTime: "07:15",
-      endTime: "07:45",
+      startTime: "07:30",
+      endTime: "08:15",
     },
   ];
 
+  // Block 1: Morning Focus (Subject 1)
   if (chosenTargets[0]) {
     generatedBlocks.push({
       type: "study",
-      title: `${chosenTargets[0].subject} Focus Sprint`,
+      title: `${chosenTargets[0].subject} Focus Session`,
       subject: chosenTargets[0].subject,
       topic: chosenTargets[0].topic,
       timeMode: "range",
-      startTime: "08:00",
-      endTime: chosenTargets[0].durationMin === 60 ? "09:00" : "09:30",
+      startTime: "08:30",
+      endTime: "10:30",
       notes: chosenTargets[0].note,
       subtasks: [
-        `Review core theory of ${chosenTargets[0].topic}`,
-        "Solve 15-20 practice MCQs",
-        "Add key formulas to review sheet",
+        `Review key concepts of ${chosenTargets[0].topic}`,
+        "Complete 15-20 practice MCQs in Arena",
+        "Record mistakes in notebook",
       ],
     });
   }
 
+  // Block 2: Late Morning (Subject 2 - Different Subject!)
   if (chosenTargets[1]) {
     generatedBlocks.push({
       type: "study",
-      title: `${chosenTargets[1].subject} Revision Block`,
+      title: `${chosenTargets[1].subject} Concept Sprint`,
       subject: chosenTargets[1].subject,
       topic: chosenTargets[1].topic,
       timeMode: "range",
-      startTime: "10:00",
-      endTime: chosenTargets[1].durationMin === 60 ? "11:00" : "11:30",
+      startTime: "11:00",
+      endTime: "12:30",
       notes: chosenTargets[1].note,
       subtasks: [
-        "High-yield problem solving",
-        "Review mistake patterns in MCQ Arena",
+        "Rapid concept drill & formula check",
+        "10-question focus quiz",
       ],
     });
   }
 
   generatedBlocks.push({
     type: "normal",
-    title: "Lunch & Power Rest",
+    title: "Lunch & Rest Break",
     timeMode: "range",
-    startTime: "12:30",
-    endTime: "13:30",
+    startTime: "12:45",
+    endTime: "14:00",
   });
 
-  if (isCoachingDay) {
+  // Check if user has an outing / busy window scheduled
+  if (busyWindow) {
     generatedBlocks.push({
       type: "normal",
-      title: "Coaching / Classes",
+      title: busyWindow.title,
       timeMode: "range",
-      startTime: "14:30",
-      endTime: "17:00",
-      notes: "Attending scheduled coaching session",
+      startTime: busyWindow.start,
+      endTime: busyWindow.end,
+      notes: "Scheduled appointment / personal commitment",
     });
   } else {
+    // Afternoon: Subject 3 or Free Time
     if (chosenTargets[2]) {
       generatedBlocks.push({
         type: "study",
@@ -298,32 +402,33 @@ Output strictly valid JSON with this shape:
         endTime: "16:00",
         notes: chosenTargets[2].note,
         subtasks: [
-          "Concept notes & flashcard review",
-          "Timed 20-min session in MCQ Arena",
+          `Target unfinished modules in ${chosenTargets[2].topic}`,
+          "Solve 12 exam questions",
         ],
       });
     }
 
     generatedBlocks.push({
       type: "normal",
-      title: "Free Time / Walk & Workout",
+      title: "Free Time / Outdoor Walk",
       timeMode: "range",
       startTime: "16:30",
-      endTime: "17:30",
+      endTime: "17:45",
     });
   }
 
+  // Evening Practice & Review
   generatedBlocks.push({
     type: "study",
-    title: "MCQ Arena Exam Simulation",
+    title: "MCQ Arena Exam Simulation & Mistakes Review",
     subject: chosenTargets[0]?.subject || "Exam Prep",
     topic: "Mixed Rapid Revision",
     timeMode: "range",
-    startTime: "18:00",
-    endTime: "19:30",
+    startTime: "18:30",
+    endTime: "20:00",
     notes: "Timed speed test to build exam stamina",
     subtasks: [
-      "Complete 2 Arena ranked sessions",
+      "2 Arena ranked speed sessions",
       "Redo uncorrected mistakes",
     ],
   });
@@ -332,25 +437,24 @@ Output strictly valid JSON with this shape:
     type: "normal",
     title: "Dinner & Family Time",
     timeMode: "range",
-    startTime: "19:45",
-    endTime: "21:00",
+    startTime: "20:15",
+    endTime: "21:30",
   });
 
   generatedBlocks.push({
     type: "normal",
-    title: "Sleep & Brain Recovery",
+    title: "Sleep & Recovery",
     timeMode: "single",
     startTime: "23:00",
-    notes: "Phone on DND, 7-8 hours quality sleep",
+    notes: "Rest well to consolidate memory",
   });
 
   return {
     success: true,
-    summary: isCoachingDay
-      ? `Scheduled coaching from 2:30 PM to 5:00 PM with focused morning & evening study sprints!`
-      : `Complete balanced day crafted with high-priority unfinished topics and active recovery.`,
+    summary: busyWindow
+      ? `Tailored routine honoring your ${busyWindow.title} (${busyWindow.start} - ${busyWindow.end}) with diversified study blocks!`
+      : `Interleaved multi-subject schedule balancing ${chosenTargets.map((c) => c.subject).join(", ")} and healthy recovery!`,
     blocks: generatedBlocks,
     generatedBy: "smart-engine",
   };
 }
-

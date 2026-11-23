@@ -157,20 +157,35 @@ export async function getAiProfile() {
   const dbUser = await prisma.user.findUnique({
     where: { id: user.id },
     select: {
+      name: true,
+      bio: true,
+      username: true,
       aiName: true,
       aiNotepad: true,
     },
   });
 
   return {
+    studentName: dbUser?.name?.trim() || dbUser?.username || "Student",
+    studyBio: dbUser?.bio?.trim() || "",
     aiName: dbUser?.aiName?.trim() || DEFAULT_AI_NAME,
     notepad: dbUser?.aiNotepad || "",
   };
 }
 
-export async function updateAiProfile(data: { aiName?: string; notepad?: string }) {
+export async function updateAiProfile(data: {
+  aiName?: string;
+  notepad?: string;
+  studentName?: string;
+  studyBio?: string;
+}) {
   const user = await requireUser();
-  const updateData: { aiName?: string; aiNotepad?: string } = {};
+  const updateData: {
+    aiName?: string;
+    aiNotepad?: string;
+    name?: string;
+    bio?: string;
+  } = {};
 
   if (data.aiName !== undefined) {
     updateData.aiName = data.aiName.trim() || DEFAULT_AI_NAME;
@@ -178,11 +193,19 @@ export async function updateAiProfile(data: { aiName?: string; notepad?: string 
   if (data.notepad !== undefined) {
     updateData.aiNotepad = data.notepad;
   }
+  if (data.studentName !== undefined) {
+    updateData.name = data.studentName.trim();
+  }
+  if (data.studyBio !== undefined) {
+    updateData.bio = data.studyBio.trim();
+  }
 
   const updated = await prisma.user.update({
     where: { id: user.id },
     data: updateData,
     select: {
+      name: true,
+      bio: true,
       aiName: true,
       aiNotepad: true,
     },
@@ -191,7 +214,13 @@ export async function updateAiProfile(data: { aiName?: string; notepad?: string 
   revalidatePath("/routine/settings");
   revalidatePath("/chat");
   revalidatePath("/routine");
-  return { success: true, aiName: updated.aiName, notepad: updated.aiNotepad };
+  return {
+    success: true,
+    studentName: updated.name,
+    studyBio: updated.bio,
+    aiName: updated.aiName,
+    notepad: updated.aiNotepad,
+  };
 }
 
 export async function getDbRoutinePresets() {

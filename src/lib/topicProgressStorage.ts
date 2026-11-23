@@ -1,5 +1,7 @@
 "use client";
 
+import { saveDbTopicMastery } from "@/app/actions/topic-mastery";
+
 export interface TopicMastery {
   subjectName: string;
   topicName: string;
@@ -99,6 +101,7 @@ export function setTopicMastery(
 
   all[key] = updated;
   saveAllTopicMastery(all);
+  saveDbTopicMastery(subjectName, topicName, clamped).catch(console.warn);
   return updated;
 }
 

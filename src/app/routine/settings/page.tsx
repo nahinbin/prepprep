@@ -14,6 +14,8 @@ import {
   Pencil,
   Power,
   X,
+  User,
+  GraduationCap,
 } from "lucide-react";
 import { AppShell } from "@/components/NavMenu";
 import {
@@ -24,26 +26,25 @@ import {
   deleteDbRoutinePreset,
   toggleDbRoutinePreset,
 } from "@/app/actions/ai-profile";
-import {
-  getAiPermanentNotes,
-  setAiPermanentNotes,
-  getAiAssistantName,
-  setAiAssistantName,
-} from "@/lib/routineStorage";
 import { RoutinePreset, RoutinePresetBlock } from "@/lib/routineTypes";
 
 export default function RoutineSettingsPage() {
   const router = useRouter();
 
-  // 1. Notepad
+  // 1. Student Identity
+  const [studentName, setStudentName] = useState("");
+  const [studyBio, setStudyBio] = useState("");
+  const [profileSaved, setProfileSaved] = useState(false);
+
+  // 2. Notepad
   const [notepadText, setNotepadText] = useState("");
   const [notepadSaved, setNotepadSaved] = useState(false);
 
-  // 2. AI Assistant Nickname
+  // 3. AI Assistant Nickname
   const [aiName, setAiName] = useState("AI Assistant");
   const [aiNameSaved, setAiNameSaved] = useState(false);
 
-  // 3. Presets
+  // 4. Presets
   const [presets, setPresets] = useState<RoutinePreset[]>([]);
   const [showPresetModal, setShowPresetModal] = useState(false);
   const [editingPresetId, setEditingPresetId] = useState<string | null>(null);
@@ -55,10 +56,10 @@ export default function RoutineSettingsPage() {
   useEffect(() => {
     getAiProfile().then((profile) => {
       if (profile) {
-        setAiName(profile.aiName || getAiAssistantName() || "AI Assistant");
-        setNotepadText(profile.notepad || getAiPermanentNotes() || "");
-        setAiAssistantName(profile.aiName || "AI Assistant");
-        setAiPermanentNotes(profile.notepad || "");
+        setStudentName(profile.studentName || "");
+        setStudyBio(profile.studyBio || "");
+        setAiName(profile.aiName || "AI Assistant");
+        setNotepadText(profile.notepad || "");
       }
     }).catch(console.warn);
 
@@ -69,8 +70,16 @@ export default function RoutineSettingsPage() {
     }).catch(console.warn);
   }, []);
 
+  const handleSaveProfile = async () => {
+    await updateAiProfile({
+      studentName: studentName.trim(),
+      studyBio: studyBio.trim(),
+    }).catch(console.warn);
+    setProfileSaved(true);
+    setTimeout(() => setProfileSaved(false), 2000);
+  };
+
   const handleSaveNotepad = async () => {
-    setAiPermanentNotes(notepadText);
     await updateAiProfile({ notepad: notepadText }).catch(console.warn);
     setNotepadSaved(true);
     setTimeout(() => setNotepadSaved(false), 2000);
@@ -79,7 +88,6 @@ export default function RoutineSettingsPage() {
   const handleSaveAiName = async () => {
     const clean = aiName.trim() || "AI Assistant";
     setAiName(clean);
-    setAiAssistantName(clean);
     await updateAiProfile({ aiName: clean }).catch(console.warn);
     setAiNameSaved(true);
     setTimeout(() => setAiNameSaved(false), 2000);
@@ -230,6 +238,61 @@ export default function RoutineSettingsPage() {
             <Check className="w-5 h-5 stroke-[2.5]" />
           </Link>
         </div>
+
+        {/* 0. Student Profile & Study Focus */}
+        <section className="rounded-3xl bg-card border border-white/10 p-5 sm:p-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <User className="w-5 h-5 text-primary" />
+              <h2 className="text-lg font-black text-foreground">Your Profile & Goals</h2>
+            </div>
+            <button
+              type="button"
+              onClick={handleSaveProfile}
+              className="w-10 h-10 rounded-xl bg-primary hover:brightness-110 text-primary-foreground font-bold flex items-center justify-center transition-all active:scale-95 shadow-md shadow-primary/20 shrink-0"
+              aria-label="Save Profile"
+              title="Save Profile"
+            >
+              {profileSaved ? <Check className="w-5 h-5" /> : <Save className="w-5 h-5" />}
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wide mb-1.5 pl-1">
+                Your Name / Preferred Name
+              </label>
+              <input
+                type="text"
+                value={studentName}
+                onChange={(e) => setStudentName(e.target.value)}
+                placeholder="e.g. Nahin"
+                maxLength={30}
+                className="w-full px-4 py-2.5 rounded-xl bg-black/25 border border-white/10 text-foreground font-bold text-sm focus:outline-none focus:border-primary"
+              />
+              <span className="block text-[11px] text-muted-foreground mt-1 pl-1">
+                AI will always call you by this name.
+              </span>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wide mb-1.5 pl-1">
+                What are you studying?
+              </label>
+              <input
+                type="text"
+                value={studyBio}
+                onChange={(e) => setStudyBio(e.target.value)}
+                placeholder="e.g. Medicine / USMLE, AP Biology, CS"
+                maxLength={60}
+                className="w-full px-4 py-2.5 rounded-xl bg-black/25 border border-white/10 text-foreground font-bold text-sm focus:outline-none focus:border-primary"
+              />
+              <span className="block text-[11px] text-muted-foreground mt-1 pl-1">
+                Goals & exams for smart recommendations.
+              </span>
+            </div>
+          </div>
+        </section>
 
         {/* 1. Notepad (Requested by user: Just 'Notepad' with small text under, Save button is icon only) */}
         <section className="rounded-3xl bg-card border border-white/10 p-5 sm:p-6 space-y-4">

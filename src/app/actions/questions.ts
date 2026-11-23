@@ -128,3 +128,79 @@ export async function deleteMultipleQuestions(questionIds: string[]) {
   revalidatePath("/session/new");
   return { success: true, count: questionIds.length };
 }
+
+/**
+ * Save AI generated MCQs directly into the student's Question Bank in PostgreSQL
+ */
+export async function saveGeneratedQuestionsToBank(data: {
+  subjectName: string;
+  topicName: string;
+  questions: Array<{
+    question: string;
+    options: Record<string, string>;
+    answer: string;
+  }>;
+}) {
+  const user = await requireAuth();
+  const subName = data.subjectName.trim() || "General";
+  const topName = data.topicName.trim() || "General Practice";
+
+  if (!data.questions || data.questions.length === 0) {
+    return { error: "No questions to save." };
+  }
+
+  // 1. Find or create subject for this user
+  let subject = await prisma.subject.findFirst({
+    where: {
+      userId: user.id,
+      name: { equals: subName, mode: "insensitive" },
+    },
+  });
+  if (!subject) {
+    subject = await prisma.subject.create({
+      data: { name: subName, userId: user.id },
+    });
+  }
+
+  // 2. Find or create topic under this subject
+  let topic = await prisma.topic.findFirst({
+    where: {
+      subjectId: subject.id,
+      name: { equals: topName, mode: "insensitive" },
+    },
+  });
+  if (!topic) {
+    topic = await prisma.topic.create({
+      data: { name: topName, subjectId: subject.id },
+    });
+  }
+
+  // 3. Insert questions
+  const created = await prisma.$transaction(
+    data.questions.map((q) =>
+      prisma.question.create({
+        data: {
+          subjectId: subject.id,
+          topicId: topic.id,
+          question: q.question.trim(),
+          options: JSON.stringify(q.options),
+          correctAnswer: q.answer.trim(),
+        },
+      })
+    )
+  );
+
+  revalidatePath("/questions");
+  revalidatePath("/subjects");
+  revalidatePath("/session/new");
+
+  return {
+    success: true,
+    savedCount: created.length,
+    subjectName: subject.name,
+    topicName: topic.name,
+    subjectId: subject.id,
+    topicId: topic.id,
+    questionIds: created.map((q) => q.id),
+  };
+}

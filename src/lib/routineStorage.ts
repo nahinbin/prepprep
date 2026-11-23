@@ -30,18 +30,15 @@ export function setAiAssistantName(name: string): void {
   }
 }
 
-export const DEFAULT_PERMANENT_NOTES = `Coaching: Monday, Wednesday, and Friday from 2:30 PM to 5:00 PM
-School / Classes: 8:00 AM to 1:30 PM on weekdays
-Target: Preparing for upcoming exams, maximize MCQ practice and high-yield topics
-Sleep: Aim for 11:00 PM to stay energized`;
+export const DEFAULT_PERMANENT_NOTES = "";
 
 export function getAiPermanentNotes(): string {
-  if (typeof window === "undefined") return DEFAULT_PERMANENT_NOTES;
+  if (typeof window === "undefined") return "";
   try {
     const raw = localStorage.getItem(AI_PERMANENT_NOTES_KEY);
-    return raw !== null ? raw : DEFAULT_PERMANENT_NOTES;
+    return raw !== null ? raw : "";
   } catch {
-    return DEFAULT_PERMANENT_NOTES;
+    return "";
   }
 }
 

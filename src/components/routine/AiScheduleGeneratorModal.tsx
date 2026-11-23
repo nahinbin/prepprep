@@ -7,13 +7,8 @@ import {
   FileText,
 } from "lucide-react";
 import { generateAiDailySchedule } from "@/app/actions/ai-schedule";
+import { bulkCreateDbRoutineBlocks } from "@/app/actions/routine";
 import { RoutineBlock } from "@/lib/routineTypes";
-import {
-  generateBlockId,
-  getAiPermanentNotes,
-  upsertBlock,
-} from "@/lib/routineStorage";
-import { getAllTopicMastery } from "@/lib/topicProgressStorage";
 
 interface AiScheduleGeneratorModalProps {
   isOpen: boolean;
@@ -46,51 +41,45 @@ export function AiScheduleGeneratorModal({
 
   if (!isOpen) return null;
 
-  const permanentNotes = getAiPermanentNotes();
-
   const handleGenerate = async () => {
     setIsLoading(true);
     setErrorMsg("");
 
     try {
-      const topicMastery = getAllTopicMastery();
-
       const result = await generateAiDailySchedule({
         dateKey,
         dayOfWeek,
-        permanentNotes,
         todayNote: todayNote.trim() || undefined,
-        topicMastery,
       });
 
       if (!result.success || result.blocks.length === 0) {
         throw new Error(result.error || "Failed to generate schedule.");
       }
 
-      // Convert generated DTOs to RoutineBlock and save
-      result.blocks.forEach((b, idx) => {
-        const routineBlock: RoutineBlock = {
-          id: generateBlockId(),
-          date: dateKey,
-          type: b.type,
-          title: b.title,
-          timeMode: b.timeMode || "range",
-          startTime: b.startTime,
-          endTime: b.endTime,
-          isCompleted: false,
-          subject: b.subject,
-          topic: b.topic,
-          notes: b.notes,
-          subtasks: b.subtasks?.map((st, sIdx) => ({
-            id: `st_${Date.now()}_${sIdx}`,
-            text: st,
-            completed: false,
-          })),
-          order: idx,
-          createdAt: Date.now() + idx,
-        };
-        upsertBlock(routineBlock);
-      });
+      // Convert generated DTOs and save directly to PostgreSQL
+      const routineBlocksToCreate = result.blocks.map((b, idx) => ({
+        date: dateKey,
+        type: b.type,
+        title: b.title,
+        timeMode: b.timeMode || ("range" as const),
+        startTime: b.startTime,
+        endTime: b.endTime,
+        isCompleted: false,
+        subject: b.subject,
+        topic: b.topic,
+        notes: b.notes,
+        subtasks: b.subtasks?.map((st, sIdx) => ({
+          id: `st_${Date.now()}_${sIdx}`,
+          text: st,
+          completed: false,
+        })),
+        order: idx,
+      }));
+
+      await bulkCreateDbRoutineBlocks(routineBlocksToCreate);
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("routine-blocks-updated"));
+      }
 
       onScheduleGenerated(result.summary);
       onClose();

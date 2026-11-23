@@ -12,6 +12,9 @@ import {
 import { getSession } from "@/app/actions/auth";
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
+import { generateAiDailySchedule } from "@/app/actions/ai-schedule";
+import { bulkCreateDbRoutineBlocks } from "@/app/actions/routine";
+import { saveGeneratedQuestionsToBank } from "@/app/actions/questions";
 
 const DEFAULT_AI_NAME = "AI Assistant";
 
@@ -25,6 +28,7 @@ export interface GeneratedQuizQuestion {
 export interface GeneratedQuiz {
   title: string;
   subject?: string;
+  topic?: string;
   questions: GeneratedQuizQuestion[];
 }
 
@@ -52,6 +56,9 @@ export interface ChatMessage {
     addedCount?: number;
     skippedCount?: number;
     topics?: string[];
+    newName?: string;
+    newNotepadText?: string;
+    scheduleSummary?: string;
     blockData?: {
       type: "study" | "normal";
       title: string;
@@ -61,67 +68,59 @@ export interface ChatMessage {
       endTime?: string;
       notes?: string;
     };
-    newNotepadText?: string;
-    newName?: string;
-    scheduleSummary?: string;
   };
   generatedQuiz?: GeneratedQuiz;
   timestamp: number;
 }
 
 export interface ChatContext {
-  aiName?: string;
+  activeSubject?: string;
+  activeTopic?: string;
   notepadNotes?: string;
-  activePresets?: string[];
+  recentAccuracy?: number;
+  totalXp?: number;
+  aiName?: string;
 }
 
-export interface DbChatSessionSummary {
-  id: string;
-  title: string;
-  updatedAt: number;
-  messages: ChatMessage[];
-}
+export async function getDbChatSessions() {
+  const user = await getSession();
+  if (!user) return [];
 
-/**
- * Get all chat sessions for the logged-in user from PostgreSQL database
- */
-export async function getDbChatSessions(): Promise<DbChatSessionSummary[]> {
-  try {
-    const user = await getSession();
-    if (!user) return [];
-
-    const sessions = await prisma.aiChatSession.findMany({
-      where: { userId: user.id },
-      include: {
-        messages: {
-          orderBy: { createdAt: "asc" },
-        },
+  const sessions = await prisma.aiChatSession.findMany({
+    where: { userId: user.id },
+    orderBy: { updatedAt: "desc" },
+    include: {
+      messages: {
+        orderBy: { createdAt: "asc" },
       },
-      orderBy: { updatedAt: "desc" },
-    });
+    },
+  });
 
-    return sessions.map((s) => ({
-      id: s.id,
-      title: s.title,
-      updatedAt: s.updatedAt.getTime(),
-      messages: s.messages.map((m) => ({
+  return sessions.map((s) => ({
+    id: s.id,
+    title: s.title,
+    updatedAt: s.updatedAt.getTime(),
+    messages: s.messages.map((m) => {
+      let actionTaken = undefined;
+      let generatedQuiz = undefined;
+      try {
+        if (m.actionTaken) actionTaken = JSON.parse(m.actionTaken);
+      } catch {}
+      try {
+        if (m.quizData) generatedQuiz = JSON.parse(m.quizData);
+      } catch {}
+      return {
         id: m.id,
         role: m.role as "user" | "assistant" | "system",
         content: m.content,
-        actionTaken: m.actionTaken ? JSON.parse(m.actionTaken) : undefined,
-        generatedQuiz: m.quizData ? JSON.parse(m.quizData) : undefined,
+        actionTaken,
+        generatedQuiz,
         timestamp: m.createdAt.getTime(),
-      })),
-    }));
-  } catch (err) {
-    console.error("Failed to load DB chat sessions:", err);
-    return [];
-  }
+      };
+    }),
+  }));
 }
 
-/**
- * Create a new chat session in PostgreSQL for the logged-in user
- */
 export async function createDbChatSession(title: string = "New Chat") {
   const user = await getSession();
   if (!user) return null;
@@ -129,7 +128,7 @@ export async function createDbChatSession(title: string = "New Chat") {
   const session = await prisma.aiChatSession.create({
     data: {
       userId: user.id,
-      title: title.slice(0, 50),
+      title,
     },
   });
 
@@ -141,62 +140,48 @@ export async function createDbChatSession(title: string = "New Chat") {
   };
 }
 
-/**
- * Delete a chat session in PostgreSQL for the logged-in user
- */
 export async function deleteDbChatSession(sessionId: string) {
   const user = await getSession();
-  if (!user) return { success: false };
+  if (!user) return { error: "Unauthorized" };
+
+  await prisma.aiChatSession.deleteMany({
+    where: { id: sessionId, userId: user.id },
+  });
+
+  revalidatePath("/chat");
+  return { success: true };
+}
+
+export async function saveDbChatMessage(sessionId: string, message: ChatMessage) {
+  const user = await getSession();
+  if (!user) return;
 
   const session = await prisma.aiChatSession.findFirst({
     where: { id: sessionId, userId: user.id },
   });
-  if (!session) return { success: false };
+  if (!session) return;
 
-  await prisma.aiChatSession.delete({
-    where: { id: sessionId },
+  await prisma.aiChatMessage.create({
+    data: {
+      sessionId,
+      role: message.role,
+      content: message.content,
+      actionTaken: message.actionTaken ? JSON.stringify(message.actionTaken) : null,
+      quizData: message.generatedQuiz ? JSON.stringify(message.generatedQuiz) : null,
+    },
   });
 
-  return { success: true };
-}
-
-/**
- * Persist a chat message directly in PostgreSQL
- */
-export async function saveDbChatMessage(sessionId: string, message: ChatMessage) {
-  try {
-    const user = await getSession();
-    if (!user) return null;
-
-    const session = await prisma.aiChatSession.findFirst({
-      where: { id: sessionId, userId: user.id },
-    });
-    if (!session) return null;
-
-    const record = await prisma.aiChatMessage.create({
-      data: {
-        sessionId,
-        role: message.role,
-        content: message.content,
-        actionTaken: message.actionTaken ? JSON.stringify(message.actionTaken) : null,
-        quizData: message.generatedQuiz ? JSON.stringify(message.generatedQuiz) : null,
-      },
-    });
-
-    // Update session timestamp & title if it's the first user message
-    const isFirstUser = message.role === "user" && session.title === "New Chat";
+  if (session.title === "New Chat" && message.role === "user") {
+    const newTitle = message.content.slice(0, 32).trim() + "...";
     await prisma.aiChatSession.update({
       where: { id: sessionId },
-      data: {
-        updatedAt: new Date(),
-        ...(isFirstUser ? { title: message.content.slice(0, 40) } : {}),
-      },
+      data: { title: newTitle, updatedAt: new Date() },
     });
-
-    return record;
-  } catch (err) {
-    console.warn("Failed to save DB chat message:", err);
-    return null;
+  } else {
+    await prisma.aiChatSession.update({
+      where: { id: sessionId },
+      data: { updatedAt: new Date() },
+    });
   }
 }
 
@@ -221,15 +206,6 @@ export async function sendChatMessage(
   const trimmed = message.trim();
   const lower = trimmed.toLowerCase();
 
-  // Determine AI name: from context, from user DB profile, or default "AI Assistant"
-  let aiName = context.aiName?.trim();
-  if (!aiName && user?.aiName) {
-    aiName = user.aiName.trim();
-  }
-  if (!aiName) {
-    aiName = DEFAULT_AI_NAME;
-  }
-
   if (!user) {
     return {
       id: "msg_" + Date.now().toString(36),
@@ -239,12 +215,40 @@ export async function sendChatMessage(
     };
   }
 
+  // Fetch full user profile from PostgreSQL
+  const dbUser = await prisma.user.findUnique({
+    where: { id: user.id },
+    select: {
+      id: true,
+      username: true,
+      name: true,
+      bio: true,
+      aiName: true,
+      aiNotepad: true,
+      coins: true,
+      positivePoints: true,
+      negativePoints: true,
+    },
+  });
+
+  const studentName = dbUser?.name?.trim() || dbUser?.username || "Student";
+  const studyBio = dbUser?.bio?.trim() || "General Studies / Exam Preparation";
+
+  // Determine AI name: from context, from user DB profile, or default "AI Assistant"
+  let aiName = context.aiName?.trim();
+  if (!aiName && dbUser?.aiName) {
+    aiName = dbUser.aiName.trim();
+  }
+  if (!aiName) {
+    aiName = DEFAULT_AI_NAME;
+  }
+
   // =========================================================================
   // LAYER 1: FAST DETERMINISTIC PATTERN MATCHER & DATABASE EXECUTOR
   // =========================================================================
 
   // 1. Rename AI Assistant
-  // e.g. "change your name to Jarvis" or "call yourself Echo" or "your name is now Alex"
+  // e.g. "change your name to Jarvis" or "call yourself StudyPro"
   const changeNameRegex = /(?:change\s+your\s+name\s+to|call\s+yourself|your\s+name\s+is\s+now|rename\s+yourself\s+to)\s+([a-zA-Z0-9_\-\s]{2,25})/i;
   const matchChangeName = trimmed.match(changeNameRegex);
   if (matchChangeName) {
@@ -260,7 +264,7 @@ export async function sendChatMessage(
       const responseMsg: ChatMessage = {
         id: "msg_" + Date.now().toString(36),
         role: "assistant",
-        content: `Got it! My name is now **${newName}**. I've saved this in your account database and I will remember it across all your devices and sessions! What shall we tackle next?`,
+        content: `Got it! My name is now **${newName}**. I've saved this in your account database and I will remember it across all your devices!\n\nJust remember:\n• **My name is:** ${newName}\n• **Your name is:** ${studentName}\n\nWhat shall we tackle next, **${studentName}**?`,
         actionTaken: {
           type: "changed_name",
           newName,
@@ -272,8 +276,170 @@ export async function sendChatMessage(
     }
   }
 
-  // 2. Delete Subject
-  // e.g. "delete subject Biology" or "remove subject Chemistry" or "delete the subject Physics"
+  // 2. Set Student's Own Name
+  // e.g. "my name is Nahin" or "call me Nahin"
+  const matchStudentName = trimmed.match(/^(?:my\s+name\s+is|call\s+me|i\s+am)\s+([a-zA-Z\s]{2,30})$/i);
+  if (matchStudentName && !lower.includes("studypro") && !lower.includes("assistant")) {
+    const newStudentName = matchStudentName[1].trim();
+    if (newStudentName) {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { name: newStudentName },
+      });
+      revalidatePath("/routine/settings");
+      revalidatePath("/chat");
+
+      const responseMsg: ChatMessage = {
+        id: "msg_" + Date.now().toString(36),
+        role: "assistant",
+        content: `Nice to meet you, **${newStudentName}**! I've saved your name in your profile.\n\nFrom now on:\n• **Your name:** ${newStudentName}\n• **My name:** ${aiName}\n\nI will always address you as **${newStudentName}**! Ready to crush your goals today?`,
+        timestamp: Date.now(),
+      };
+      if (sessionId) await saveDbChatMessage(sessionId, responseMsg);
+      return responseMsg;
+    }
+  }
+
+  // 3. Set Student's Study Focus / What they study
+  // e.g. "I am studying Medicine / USMLE" or "preparing for AP Biology"
+  const matchStudyBio = trimmed.match(/^(?:i\s+(?:am\s+)?studying|i\s+study|my\s+major\s+is|preparing\s+for|my\s+target\s+is)\s+([a-zA-Z0-9_\-\s,/]{3,60})$/i);
+  if (matchStudyBio) {
+    const newBio = matchStudyBio[1].trim();
+    if (newBio) {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { bio: newBio },
+      });
+      revalidatePath("/routine/settings");
+      revalidatePath("/chat");
+
+      const responseMsg: ChatMessage = {
+        id: "msg_" + Date.now().toString(36),
+        role: "assistant",
+        content: `Got it, **${studentName}**! I've recorded that you are studying **${newBio}**.\n\nI will tailor all our practice MCQs, daily routines, and high-yield study blocks to this exact target!`,
+        timestamp: Date.now(),
+      };
+      if (sessionId) await saveDbChatMessage(sessionId, responseMsg);
+      return responseMsg;
+    }
+  }
+
+  // 4. Check Stats, Coins, Study History & Reminders
+  const isStatsRequest =
+    lower.includes("how much coin") ||
+    lower.includes("how many coin") ||
+    lower.includes("my coin") ||
+    lower.includes("coin balance") ||
+    lower.includes("how much did i study") ||
+    lower.includes("how much i studied") ||
+    lower.includes("my study history") ||
+    lower.includes("my stats") ||
+    lower.includes("my progress") ||
+    lower.includes("did i miss study");
+
+  if (isStatsRequest) {
+    const netXp = (dbUser?.positivePoints ?? 0) - (dbUser?.negativePoints ?? 0);
+    const sessions = await prisma.session.findMany({
+      where: { userId: user.id },
+      orderBy: { createdAt: "desc" },
+      take: 5,
+    });
+    const totalSessions = await prisma.session.count({ where: { userId: user.id } });
+    const totalQuestionsBank = await prisma.question.count({
+      where: { subject: { userId: user.id } },
+    });
+
+    const now = Date.now();
+    let daysSinceLast = 0;
+    if (sessions.length > 0) {
+      daysSinceLast = Math.floor((now - sessions[0].createdAt.getTime()) / (1000 * 60 * 60 * 24));
+    }
+
+    let reminderNote = "";
+    if (sessions.length === 0) {
+      reminderNote = "⚠️ You haven't started an MCQ session yet! Let's do your first practice session to earn XP and coins.";
+    } else if (daysSinceLast >= 2) {
+      reminderNote = `⚠️ You haven't practiced in **${daysSinceLast} days**! Let's do a quick 5-question sprint right now to keep your streak alive.`;
+    } else {
+      reminderNote = `🔥 Awesome consistency! You practiced ${daysSinceLast === 0 ? "today" : "yesterday"}. Keep this winning streak going!`;
+    }
+
+    const statsMsg: ChatMessage = {
+      id: "msg_" + Date.now().toString(36),
+      role: "assistant",
+      content: `📊 **Your Academic Stats & Account Overview, ${studentName}:**\n\n• **Coins Balance:** 🪙 **${dbUser?.coins ?? 0} coins**\n• **Net XP:** ⚡ **${netXp} XP**\n• **Completed Sessions:** 🎯 **${totalSessions} sessions**\n• **Questions in Bank:** 📚 **${totalQuestionsBank} questions**\n\n${reminderNote}`,
+      timestamp: Date.now(),
+    };
+    if (sessionId) await saveDbChatMessage(sessionId, statsMsg);
+    return statsMsg;
+  }
+
+  // 5. Full Day Schedule Generator from Chat (Respects outings, exams, multi-subject rotation)
+  const isScheduleDayRequest =
+    lower.includes("schedule my day") ||
+    lower.includes("plan my day") ||
+    lower.includes("make a schedule") ||
+    lower.includes("make my schedule") ||
+    lower.includes("build my schedule") ||
+    lower.includes("decide a good schedule") ||
+    lower.includes("schedule today") ||
+    (lower.includes("schedule") && (lower.includes("tired") || lower.includes("going out") || lower.includes("exam on") || lower.includes("exam in")));
+
+  if (isScheduleDayRequest) {
+    const now = new Date();
+    const dateKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    const dayOfWeek = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][now.getDay()];
+
+    const schedRes = await generateAiDailySchedule({
+      dateKey,
+      dayOfWeek,
+      todayNote: trimmed,
+    });
+
+    if (schedRes.success && schedRes.blocks.length > 0) {
+      await bulkCreateDbRoutineBlocks(
+        schedRes.blocks.map((b, idx) => ({
+          date: dateKey,
+          type: b.type,
+          title: b.title,
+          timeMode: b.timeMode || "range",
+          startTime: b.startTime,
+          endTime: b.endTime,
+          isCompleted: false,
+          subject: b.subject,
+          topic: b.topic,
+          notes: b.notes,
+          subtasks: b.subtasks?.map((st, sIdx) => ({
+            id: `st_${Date.now()}_${sIdx}`,
+            text: st,
+            completed: false,
+          })),
+          order: idx,
+        }))
+      );
+      revalidatePath("/routine");
+
+      const blocksSummary = schedRes.blocks
+        .slice(0, 8)
+        .map((b) => `• **${b.startTime || "Anytime"} - ${b.endTime || ""}:** ${b.title}${b.subject ? ` *(${b.subject})*` : ""}`)
+        .join("\n");
+
+      const schedMsg: ChatMessage = {
+        id: "msg_" + Date.now().toString(36),
+        role: "assistant",
+        content: `📅 **I've crafted your personalized daily schedule for today!**\n\n${schedRes.summary}\n\n**Schedule Breakdown:**\n${blocksSummary}\n\nAll **${schedRes.blocks.length} blocks** are saved directly to your Daily Routine database.`,
+        actionTaken: {
+          type: "generated_schedule",
+          scheduleSummary: schedRes.summary,
+        },
+        timestamp: Date.now(),
+      };
+      if (sessionId) await saveDbChatMessage(sessionId, schedMsg);
+      return schedMsg;
+    }
+  }
+
+  // 6. Delete Subject
   const deleteSubRegex = /(?:delete|remove|drop)\s+(?:the\s+)?subject\s+([a-zA-Z0-9_\s]+)$/i;
   const matchDeleteSub = trimmed.match(deleteSubRegex);
   if (matchDeleteSub) {
@@ -303,8 +469,7 @@ export async function sendChatMessage(
     return responseMsg;
   }
 
-  // 3. Rename Subject
-  // e.g. "rename subject Math to Mathematics" or "change subject Physics to Advanced Physics"
+  // 7. Rename Subject
   const renameSubRegex = /(?:rename|change)\s+(?:the\s+)?subject\s+(?:named\s+|called\s+)?([a-zA-Z0-9_\s]+?)\s+to\s+([a-zA-Z0-9_\s]+)$/i;
   const matchRenameSub = trimmed.match(renameSubRegex);
   if (matchRenameSub) {
@@ -335,8 +500,7 @@ export async function sendChatMessage(
     return responseMsg;
   }
 
-  // 4. Delete Topic from Subject
-  // e.g. "delete topic Optics from Physics" or "remove topic Kinematics in Math"
+  // 8. Delete Topic from Subject
   const deleteTopicRegex = /(?:delete|remove)\s+(?:the\s+)?topic\s+([a-zA-Z0-9_\s]+?)\s+(?:from|in|under)\s+(?:the\s+)?(?:subject\s+)?([a-zA-Z0-9_\s]+)$/i;
   const matchDeleteTopic = trimmed.match(deleteTopicRegex);
   if (matchDeleteTopic) {
@@ -368,10 +532,7 @@ export async function sendChatMessage(
     return responseMsg;
   }
 
-  // 5. Create Subject WITH Topics
-  // e.g. "add Biology with topics Genetics, Cell Biology, Ecology"
-  // or "create subject Physics with topics: Optics, Kinematics"
-  // or "add Math and topics Algebra, Calculus"
+  // 9. Create Subject WITH Topics
   const subWithTopicsRegex = /^(?:please\s+)?(?:create|add|make|insert|set\s*up)\s+(?:a\s+)?(?:new\s+)?(?:subject\s+)?([a-zA-Z0-9_\s]+?)\s+(?:with|having|including|and)\s+(?:topics?|subtopics?)\s*[:\n\-\?]?\s*([\s\S]+)$/i;
   const matchSubWithTopics = trimmed.match(subWithTopicsRegex);
   if (matchSubWithTopics) {
@@ -411,8 +572,7 @@ export async function sendChatMessage(
     }
   }
 
-  // 6. Create Subject ALONE
-  // e.g. "create subject Physics", "add subject Advanced Math", "add Math as a subject"
+  // 10. Create Subject ALONE
   const createSubRegex = /^(?:please\s+)?(?:create|add|make|insert)\s+(?:a\s+)?(?:new\s+)?(?:subject\s+)?([a-zA-Z0-9_\s]+?)(?:\s+as\s+a\s+subject)?$/i;
   const matchCreateSub = trimmed.match(createSubRegex);
   if (matchCreateSub && !lower.includes("block") && !lower.includes("topic") && !lower.includes("note") && !lower.includes("quiz")) {
@@ -444,8 +604,7 @@ export async function sendChatMessage(
     }
   }
 
-  // 7. Add Topics to existing subject
-  // e.g. "add these topics to math: algebra, calculus, geometry"
+  // 11. Add Topics to existing subject
   const addTopicsRegex = /(?:add|create|put|insert)(?:\s+(?:these|the following|some|\d+))?\s+topics?\s+(?:to|in|under|for|into)\s+([a-zA-Z0-9_\s]+?)[:\n\-\?]([\s\S]+)/i;
   const matchTopics = trimmed.match(addTopicsRegex);
   if (matchTopics) {
@@ -485,8 +644,7 @@ export async function sendChatMessage(
     }
   }
 
-  // 8. Add Routine Block
-  // e.g. "add a study block for Physics at 4 PM" or "add block: sleep at 11 PM"
+  // 12. Add Routine Block
   const addBlockMatch = trimmed.match(/(?:add|create|schedule)\s+(?:a\s+)?(study|normal)?\s*block(?:\s+for|\s+to|\s*:)?\s*([^,\n]+?)(?:\s+(?:at|from)\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm)?))?/i);
   if (addBlockMatch) {
     const rawType = (addBlockMatch[1] || "").toLowerCase() === "study" ? "study" : "normal";
@@ -529,11 +687,11 @@ export async function sendChatMessage(
     return blockMsg;
   }
 
-  // 9. Update Permanent Notepad
+  // 13. Update Permanent Notepad
   if (lower.startsWith("remember") || lower.includes("add to notepad") || lower.includes("save to notepad") || lower.includes("add to my notes")) {
     const cleanNote = trimmed.replace(/^(?:remember\s+(?:that)?|add\s+to\s+(?:my\s+)?notepad(?:\s*:)?|save\s+to\s+(?:my\s+)?notepad(?:\s*:)?|add\s+to\s+my\s+notes(?:\s*:)?)/i, "").trim();
     if (cleanNote) {
-      const currentNotes = user.aiNotepad || "";
+      const currentNotes = dbUser?.aiNotepad || "";
       const updatedNotes = currentNotes ? `${currentNotes}\n• ${cleanNote}` : `• ${cleanNote}`;
       await prisma.user.update({
         where: { id: user.id },
@@ -544,7 +702,7 @@ export async function sendChatMessage(
       const noteMsg: ChatMessage = {
         id: "msg_" + Date.now().toString(36),
         role: "assistant",
-        content: `📝 Got it! I've saved that into your **Routine Notepad**:\n\n> "${cleanNote}"\n\nI will remember this whenever building your daily schedules!`,
+        content: `📝 Got it, **${studentName}**! I've saved that into your **Routine Notepad**:\n\n> "${cleanNote}"\n\nI will remember this whenever optimizing your daily schedules!`,
         actionTaken: {
           type: "updated_notepad",
           newNotepadText: cleanNote,
@@ -556,7 +714,7 @@ export async function sendChatMessage(
     }
   }
 
-  // 10. Generate Practice Quiz from Notes/Concepts
+  // 14. Generate Practice Quiz from Notes/Concepts & SAVE TO QUESTION BANK
   const isMcqRequest =
     lower.includes("make mcq") ||
     lower.includes("create mcq") ||
@@ -564,17 +722,18 @@ export async function sendChatMessage(
     lower.includes("make questions") ||
     lower.includes("quiz me") ||
     lower.includes("test me on") ||
-    (lower.includes("mcq") && trimmed.length > 80);
+    (lower.includes("mcq") && trimmed.length > 60);
 
   if (isMcqRequest && isGeminiConfigured()) {
     try {
-      const quizPrompt = `Create 4 high-yield multiple-choice questions from the following text/concept:
+      const quizPrompt = `Create 4 high-yield multiple-choice questions from the following student request:
 "${trimmed}"
 
 Return valid raw JSON matching this shape:
 {
   "title": "Short descriptive quiz title",
   "subject": "Subject name or General",
+  "topic": "Topic name or High Yield Concepts",
   "questions": [
     {
       "question": "Question text here?",
@@ -591,10 +750,26 @@ Return valid raw JSON matching this shape:
       });
 
       if (generated && Array.isArray(generated.questions) && generated.questions.length > 0) {
+        // Save questions directly to PostgreSQL Question Bank!
+        await saveGeneratedQuestionsToBank({
+          subjectName: generated.subject || "General",
+          topicName: generated.topic || generated.title || "AI Practice",
+          questions: generated.questions.map((q) => ({
+            question: q.question,
+            options: {
+              A: q.options[0] || "",
+              B: q.options[1] || "",
+              C: q.options[2] || "",
+              D: q.options[3] || "",
+            },
+            answer: ["A", "B", "C", "D"][q.answerIndex] || "A",
+          })),
+        });
+
         const responseMsg: ChatMessage = {
           id: "msg_" + Date.now().toString(36),
           role: "assistant",
-          content: `🎯 I generated a **${generated.questions.length}-question practice quiz** from your notes!\n\nClick **Start Practice Quiz** below to test yourself right now:`,
+          content: `🎯 **I've generated a ${generated.questions.length}-question practice quiz and saved them to your Question Bank** under **${generated.subject || "General"} > ${generated.topic || "Practice"}**!\n\nYou can test yourself right here in chat or launch an official timed exam session:`,
           actionTaken: {
             type: "created_quiz",
           },
@@ -613,7 +788,6 @@ Return valid raw JSON matching this shape:
   // LAYER 2: GEMINI AI INTENT PARSER & CONVERSATIONAL CONTROLLER
   // =========================================================================
 
-  // Fetch subjects & topics context so Gemini knows current state
   let subjectsContext = "";
   try {
     const userSubjects = await getUserSubjectsAndTopics();
@@ -626,223 +800,23 @@ Return valid raw JSON matching this shape:
 
   if (isGeminiConfigured()) {
     try {
-      interface GeminiIntentResult {
-        action?: {
-          type:
-            | "create_subject_with_topics"
-            | "create_subject"
-            | "delete_subject"
-            | "rename_subject"
-            | "add_topics"
-            | "delete_topic"
-            | "create_routine_block"
-            | "update_notepad"
-            | "none";
-          subjectName?: string;
-          topics?: string[];
-          newSubjectName?: string;
-          topicName?: string;
-          blockTitle?: string;
-          blockType?: "study" | "normal";
-          blockTime?: string;
-          note?: string;
-        } | null;
-        reply: string;
-      }
+      const systemInstruction = `CRITICAL IDENTITY RULES:
+- You are ${aiName}, the student's personal AI study coach and academic mentor for MCQ Arena.
+- The student's name is ${studentName}.
+- NEVER address the student as ${aiName}! ${aiName} is YOUR name. Always address the student as ${studentName}.
+- The student is studying: ${studyBio}.
 
-      const intentPrompt = `Analyze the student's message and determine if they want to execute an action on their database, or if they are simply asking a question/conversing.
-
-Student's current subjects in database:
-${subjectsContext || "None yet."}
-
-User message: "${trimmed}"
-
-If an action is requested, output valid JSON:
-{
-  "action": {
-    "type": "create_subject_with_topics" | "create_subject" | "delete_subject" | "rename_subject" | "add_topics" | "delete_topic" | "create_routine_block" | "update_notepad" | "none",
-    "subjectName": string (if applicable),
-    "topics": string[] (if adding topics),
-    "newSubjectName": string (if renaming),
-    "topicName": string (if deleting topic),
-    "blockTitle": string (if routine block),
-    "blockType": "study" | "normal",
-    "blockTime": string (e.g. "14:00"),
-    "note": string (if notepad)
-  },
-  "reply": "Your conversational response as ${aiName}"
-}
-
-If no database action is needed, set action to null and answer the student's question thoroughly in markdown in "reply".`;
-
-      const intentRes = await generateGeminiJson<GeminiIntentResult>(intentPrompt, {
-        systemInstruction: `You are ${aiName}, the student's personal AI study coach and academic partner for MCQ Arena. You have full permission to control subjects, topics, and routines on the user's account.`,
-        temperature: 0.2,
-      });
-
-      if (intentRes && intentRes.action && intentRes.action.type && intentRes.action.type !== "none") {
-        const act = intentRes.action;
-
-        // Execute action on PostgreSQL
-        if (act.type === "create_subject_with_topics" && act.subjectName) {
-          const res = await bulkAddTopicsToSubject(act.subjectName, act.topics || []);
-          if ("success" in res && res.success) {
-            const finalMsg: ChatMessage = {
-              id: "msg_" + Date.now().toString(36),
-              role: "assistant",
-              content: `✅ I've added **${res.subjectName}** to your database with **${res.addedCount}** topics!\n\n${intentRes.reply || ""}`,
-              actionTaken: {
-                type: "created_subject",
-                subjectName: res.subjectName,
-                topics: res.addedTopics,
-              },
-              timestamp: Date.now(),
-            };
-            if (sessionId) await saveDbChatMessage(sessionId, finalMsg);
-            return finalMsg;
-          }
-        } else if (act.type === "create_subject" && act.subjectName) {
-          const res = await createSubject(act.subjectName);
-          if ("success" in res && res.success) {
-            const finalMsg: ChatMessage = {
-              id: "msg_" + Date.now().toString(36),
-              role: "assistant",
-              content: `✅ Created subject **${act.subjectName}** in your account!\n\n${intentRes.reply || ""}`,
-              actionTaken: {
-                type: "created_subject",
-                subjectName: act.subjectName,
-              },
-              timestamp: Date.now(),
-            };
-            if (sessionId) await saveDbChatMessage(sessionId, finalMsg);
-            return finalMsg;
-          }
-        } else if (act.type === "delete_subject" && act.subjectName) {
-          const res = await deleteSubjectByName(act.subjectName);
-          if ("success" in res && res.success) {
-            const finalMsg: ChatMessage = {
-              id: "msg_" + Date.now().toString(36),
-              role: "assistant",
-              content: `🗑️ Deleted subject **${res.deletedName}** from your database.\n\n${intentRes.reply || ""}`,
-              actionTaken: {
-                type: "deleted_subject",
-                subjectName: res.deletedName,
-              },
-              timestamp: Date.now(),
-            };
-            if (sessionId) await saveDbChatMessage(sessionId, finalMsg);
-            return finalMsg;
-          }
-        } else if (act.type === "rename_subject" && act.subjectName && act.newSubjectName) {
-          const res = await renameSubjectByName(act.subjectName, act.newSubjectName);
-          if ("success" in res && res.success) {
-            const finalMsg: ChatMessage = {
-              id: "msg_" + Date.now().toString(36),
-              role: "assistant",
-              content: `✏️ Renamed subject **${res.oldName}** to **${res.newName}**.\n\n${intentRes.reply || ""}`,
-              actionTaken: {
-                type: "renamed_subject",
-                subjectName: res.newName,
-              },
-              timestamp: Date.now(),
-            };
-            if (sessionId) await saveDbChatMessage(sessionId, finalMsg);
-            return finalMsg;
-          }
-        } else if (act.type === "add_topics" && act.subjectName && act.topics && act.topics.length > 0) {
-          const res = await bulkAddTopicsToSubject(act.subjectName, act.topics);
-          if ("success" in res && res.success) {
-            const finalMsg: ChatMessage = {
-              id: "msg_" + Date.now().toString(36),
-              role: "assistant",
-              content: `✅ Added **${res.addedCount}** topics to **${res.subjectName}**!\n\n${intentRes.reply || ""}`,
-              actionTaken: {
-                type: "added_topics",
-                subjectName: res.subjectName,
-                topics: res.addedTopics,
-              },
-              timestamp: Date.now(),
-            };
-            if (sessionId) await saveDbChatMessage(sessionId, finalMsg);
-            return finalMsg;
-          }
-        } else if (act.type === "delete_topic" && act.subjectName && act.topicName) {
-          const res = await deleteTopicFromSubject(act.subjectName, act.topicName);
-          if ("success" in res && res.success) {
-            const finalMsg: ChatMessage = {
-              id: "msg_" + Date.now().toString(36),
-              role: "assistant",
-              content: `🗑️ Removed topic **${res.topicName}** from **${res.subjectName}**.\n\n${intentRes.reply || ""}`,
-              actionTaken: {
-                type: "deleted_topic",
-                subjectName: res.subjectName,
-                topicName: res.topicName,
-              },
-              timestamp: Date.now(),
-            };
-            if (sessionId) await saveDbChatMessage(sessionId, finalMsg);
-            return finalMsg;
-          }
-        } else if (act.type === "create_routine_block" && act.blockTitle) {
-          const now = new Date();
-          const dateKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-          await prisma.routineBlock.create({
-            data: {
-              userId: user.id,
-              date: dateKey,
-              type: act.blockType || "study",
-              title: act.blockTitle,
-              timeMode: "range",
-              startTime: act.blockTime || "15:00",
-              endTime: "16:00",
-              subject: act.blockType === "study" ? act.subjectName || act.blockTitle : null,
-            },
-          });
-          revalidatePath("/routine");
-          const finalMsg: ChatMessage = {
-            id: "msg_" + Date.now().toString(36),
-            role: "assistant",
-            content: `📅 Added block **${act.blockTitle}** to your Daily Routine!\n\n${intentRes.reply || ""}`,
-            actionTaken: {
-              type: "added_block",
-            },
-            timestamp: Date.now(),
-          };
-          if (sessionId) await saveDbChatMessage(sessionId, finalMsg);
-          return finalMsg;
-        }
-      }
-
-      if (intentRes?.reply) {
-        const finalMsg: ChatMessage = {
-          id: "msg_" + Date.now().toString(36),
-          role: "assistant",
-          content: intentRes.reply,
-          timestamp: Date.now(),
-        };
-        if (sessionId) await saveDbChatMessage(sessionId, finalMsg);
-        return finalMsg;
-      }
-    } catch (err) {
-      console.warn("Gemini intent error, fallback to conversation:", err);
-    }
-
-    // Direct Gemini conversation fallback
-    try {
-      const systemInstruction = `You are ${aiName}, the student's personal AI study coach and academic partner for MCQ Arena.
-Always refer to yourself as ${aiName}.
-Current user's subjects in database:
+Current user's database subjects:
 ${subjectsContext || "No subjects added yet."}
-Permanent Notepad Rules:
-${context.notepadNotes || user?.aiNotepad || "Standard schedule."}
-
-Keep explanations clear, engaging, and exam-focused. Answer in good markdown formatting.`;
+User's Permanent Routine Rules:
+${dbUser?.aiNotepad || "Standard student schedule."}
+`;
 
       const conversationPrompt =
         history
           .slice(-6)
-          .map((h) => `${h.role === "user" ? "Student" : aiName}: ${h.content}`)
-          .join("\n\n") + `\n\nStudent: ${trimmed}\n${aiName}:`;
+          .map((h) => `${h.role === "user" ? studentName : aiName}: ${h.content}`)
+          .join("\n\n") + `\n\n${studentName}: ${trimmed}\n${aiName}:`;
 
       const reply = await generateGeminiText(conversationPrompt, {
         systemInstruction,
@@ -867,13 +841,9 @@ Keep explanations clear, engaging, and exam-focused. Answer in good markdown for
   // =========================================================================
   let smartReply = "";
   if (lower.includes("hello") || lower.includes("hi") || lower.includes("hey") || lower.includes("who are you")) {
-    smartReply = `Hey! I'm **${aiName}**, your personal study coach. I'm connected to your account database — I can create or delete subjects, add topics, organize your daily routine, and generate exam MCQs.\n\nWhat are you working on today?`;
-  } else if (lower.includes("math") || lower.includes("calculus") || lower.includes("derivative") || lower.includes("integral")) {
-    smartReply = `For Mathematics, active recall and problem solving are key! I can create a Mathematics subject with topics like Calculus, Linear Algebra, and Differential Equations for you, or schedule daily practice blocks.\n\nWant me to add Math topics to your account right now?`;
-  } else if (lower.includes("exam") || lower.includes("final") || lower.includes("prepare") || lower.includes("schedule")) {
-    smartReply = `Exam preparation is about consistent sprints without burnout. Head over to **Daily Routine** to organize your day, or tell me to schedule focus blocks for your high-yield subjects!`;
+    smartReply = `Hey **${studentName}**! I'm **${aiName}**, your personal study coach. I'm connected to your account database — I can create or delete subjects, add topics, organize your daily routine, and generate exam MCQs.\n\nWhat are you working on today?`;
   } else {
-    smartReply = `I'm with you! As **${aiName}**, I can manage your entire study workspace:\n\n• **Add Subjects & Topics**: Say *"Add Biology with topics Genetics, Cell Biology, Ecology"*\n• **Delete or Rename Subjects**: Say *"Delete subject Chemistry"* or *"Rename Math to Calculus"*\n• **Daily Routine**: Say *"Add a study block for Physics at 4 PM"*\n• **Generate MCQs**: Paste your lecture notes and say *"Make MCQs from this"*\n\nWhat would you like me to do?`;
+    smartReply = `I'm with you, **${studentName}**! As **${aiName}**, I can manage your entire study workspace:\n\n• **Add Subjects & Topics**: Say *"Add Biology with topics Genetics, Cell Biology, Ecology"*\n• **Plan Your Routine**: Say *"Schedule my day: going out 3 to 6 PM, exam in 2 weeks"*\n• **Check Stats**: Say *"How many coins do I have?"* or *"Did I miss studying?"*\n• **Generate MCQs**: Say *"Make 5 MCQs on Cardiology"*\n\nWhat would you like me to do?`;
   }
 
   const fallbackFinalMsg: ChatMessage = {
