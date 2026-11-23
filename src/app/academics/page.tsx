@@ -259,7 +259,11 @@ function AssessmentModal({
       return;
     }
     if (!form.subjectName.trim()) {
-      setError("Subject is required.");
+      setError("Please select a subject.");
+      return;
+    }
+    if (subjectNames.length === 0) {
+      setError("Add at least one subject before creating an assessment.");
       return;
     }
     if (!form.dueDate) {
@@ -340,19 +344,25 @@ function AssessmentModal({
             <label className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-1 block">
               Subject *
             </label>
-            <input
-              type="text"
-              list="subject-list"
-              value={form.subjectName}
-              onChange={(e) => set("subjectName", e.target.value)}
-              placeholder="Subject name"
-              className="w-full bg-background border border-white/10 rounded-xl px-3.5 py-2.5 text-sm font-medium focus:outline-none focus:border-primary/60 transition-colors"
-            />
-            <datalist id="subject-list">
-              {subjectNames.map((s) => (
-                <option key={s} value={s} />
-              ))}
-            </datalist>
+            {subjectNames.length === 0 ? (
+              <div className="w-full bg-background border border-white/10 rounded-xl px-3.5 py-2.5 text-sm text-muted-foreground">
+                No subjects found —{" "}
+                <a href="/subjects" className="text-primary underline underline-offset-2">
+                  add a subject first
+                </a>
+              </div>
+            ) : (
+              <select
+                value={form.subjectName}
+                onChange={(e) => set("subjectName", e.target.value)}
+                className="w-full bg-background border border-white/10 rounded-xl px-3.5 py-2.5 text-sm font-medium focus:outline-none focus:border-primary/60 transition-colors appearance-none"
+              >
+                <option value="" disabled>Select a subject…</option>
+                {subjectNames.map((s) => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+            )}
           </div>
 
           {/* Topic */}
