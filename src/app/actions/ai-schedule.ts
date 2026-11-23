@@ -36,6 +36,255 @@ export interface GenerateAiScheduleResult {
   error?: string;
 }
 
+interface TimeWindow {
+  startMinutes: number; // minutes from 00:00 (0 to 1439)
+  endMinutes: number;
+  startStr: string; // "14:00"
+  endStr: string;   // "20:00"
+  title: string;
+  notes?: string;
+}
+
+/**
+ * Convert "HH:MM" or "2pm", "2:30 pm", "14:00" into minutes from midnight (0..1439)
+ */
+function parseTimeToMinutes(tStr: string): number | null {
+  if (!tStr) return null;
+  const lower = tStr.trim().toLowerCase();
+
+  const isPm = lower.includes("pm");
+  const isAm = lower.includes("am");
+  const clean = lower.replace(/[a-z\s]/g, "");
+  if (!clean) return null;
+
+  const parts = clean.split(":");
+  let hours = parseInt(parts[0], 10);
+  const minutes = parts[1] ? parseInt(parts[1], 10) : 0;
+
+  if (isNaN(hours)) return null;
+
+  if (isPm && hours < 12) hours += 12;
+  if (isAm && hours === 12) hours = 0;
+
+  if (hours > 23) hours = 23;
+  return hours * 60 + Math.min(Math.max(minutes, 0), 59);
+}
+
+function minutesToTimeString(minutes: number): string {
+  const h = Math.floor(minutes / 60) % 24;
+  const m = minutes % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+/**
+ * Comprehensive parser for unavailable windows from user's notes.
+ * Handles patterns such as:
+ * - "from 2pm to 8 pm i wont be home"
+ * - "from 2 to 8 pm not home"
+ * - "2pm to 8pm out"
+ * - "busy 14:00 - 18:00"
+ * - "dentist at 3pm to 4:30pm"
+ * - "coaching from 3:00 to 5:00"
+ * - "going out 2 pm - 7 pm"
+ * - "wont be home 2pm to 8pm"
+ */
+function extractUnavailableWindows(notesText: string): TimeWindow[] {
+  if (!notesText || !notesText.trim()) return [];
+  const windows: TimeWindow[] = [];
+
+  const lines = notesText.split(/[\n;.]+/);
+
+  // Regex 1: "from X [am|pm] to Y [am|pm] [context]"
+  // e.g. "from 2pm to 8 pm i wont be home", "from 14:00 to 18:00 at work"
+  const regexFromTo = /(?:from\s+)?(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)\s*(?:to|-|until|till)\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)(?:\s+(?:i\s+)?(?:wont\s+be\s+home|not\s+home|going\s+out|out|busy|class|coaching|gym|work|appointment|event|meeting|outside))?/i;
+
+  // Regex 2: Context first, then time
+  // e.g. "wont be home from 2pm to 8pm", "going out 2 to 6", "busy between 14:00 and 19:00"
+  const regexContextFirst = /(?:wont\s+be\s+home|not\s+home|going\s+out|outing|busy|appointment|dentist|doctor|class|coaching|gym|work)\s*(?:from|at|between)?\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)\s*(?:to|-|and)\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)/i;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+
+    // Check if line indicates unavailability or outing
+    const indicatesUnavailable = /(wont\s+be\s+home|not\s+home|going\s+out|out|busy|away|appointment|dentist|doctor|coaching|classes|gym|errand)/i.test(trimmed);
+
+    let match = trimmed.match(regexContextFirst);
+    if (!match && indicatesUnavailable) {
+      match = trimmed.match(regexFromTo);
+    } else if (!match && /(?:from\s+\d{1,2}.*?to\s+\d{1,2})/i.test(trimmed)) {
+      // Even without explicit negative words, a "from X to Y" in today's note indicates a committed time window!
+      match = trimmed.match(regexFromTo);
+    }
+
+    if (match && match[1] && match[2]) {
+      let rawStart = match[1].trim();
+      let rawEnd = match[2].trim();
+
+      // If rawEnd has am/pm but rawStart doesn't, infer am/pm for rawStart
+      const endHasPm = /pm/i.test(rawEnd);
+      const endHasAm = /am/i.test(rawEnd);
+      const startHasModifier = /[ap]m/i.test(rawStart);
+
+      if (!startHasModifier) {
+        if (endHasPm) {
+          const rawStartNum = parseInt(rawStart, 10);
+          // If start is e.g. 2 and end is 8pm -> start is 2pm
+          // If start is e.g. 10 and end is 2pm -> start is 10am
+          if (rawStartNum < 12 && rawStartNum > (parseInt(rawEnd, 10) || 0)) {
+            rawStart += " am";
+          } else {
+            rawStart += " pm";
+          }
+        } else if (endHasAm) {
+          rawStart += " am";
+        }
+      }
+
+      const startM = parseTimeToMinutes(rawStart);
+      const endM = parseTimeToMinutes(rawEnd);
+
+      if (startM !== null && endM !== null && endM > startM) {
+        let title = "Away from Home / Commitment";
+        if (/wont\s+be\s+home|not\s+home|away/i.test(trimmed)) {
+          title = "Not Home / Unavailable";
+        } else if (/going\s+out|out/i.test(trimmed)) {
+          title = "Outing & Personal Time";
+        } else if (/coaching|class/i.test(trimmed)) {
+          title = "Coaching / Class";
+        } else if (/dentist|doctor|appointment/i.test(trimmed)) {
+          title = "Doctor / Appointment";
+        }
+
+        windows.push({
+          startMinutes: startM,
+          endMinutes: endM,
+          startStr: minutesToTimeString(startM),
+          endStr: minutesToTimeString(endM),
+          title,
+          notes: trimmed,
+        });
+      }
+    }
+  }
+
+  return windows;
+}
+
+/**
+ * Checks whether [start, end] overlaps with [wStart, wEnd]
+ */
+function intervalsOverlap(s1: number, e1: number, s2: number, e2: number): boolean {
+  return Math.max(s1, s2) < Math.min(e1, e2);
+}
+
+/**
+ * Hard Constraint Validator & Enforcer:
+ * Guaranteed rule: ZERO study blocks are allowed during user's unavailable windows!
+ * If an AI or heuristic block collides with an unavailable window, it is relocated or replaced.
+ */
+function enforceHardConstraints(
+  blocks: GeneratedBlockDto[],
+  unavailableWindows: TimeWindow[]
+): GeneratedBlockDto[] {
+  if (unavailableWindows.length === 0) return blocks;
+
+  const sanitized: GeneratedBlockDto[] = [];
+  const studyBlocksToRelocate: GeneratedBlockDto[] = [];
+
+  // 1. Filter existing blocks: drop or separate conflicting study blocks
+  for (const block of blocks) {
+    if (!block.startTime) {
+      sanitized.push(block);
+      continue;
+    }
+
+    const bStart = parseTimeToMinutes(block.startTime);
+    const bEnd = block.endTime ? parseTimeToMinutes(block.endTime) : (bStart !== null ? bStart + 60 : null);
+
+    if (bStart === null || bEnd === null) {
+      sanitized.push(block);
+      continue;
+    }
+
+    // Check if this block overlaps with ANY unavailable window
+    const collision = unavailableWindows.find((w) =>
+      intervalsOverlap(bStart, bEnd, w.startMinutes, w.endMinutes)
+    );
+
+    if (collision) {
+      if (block.type === "study") {
+        // Study block collided with unavailable time! NEVER ALLOW!
+        studyBlocksToRelocate.push(block);
+      }
+      // If it's already a normal block representing an event or meal, keep it if it's the event itself
+      continue;
+    }
+
+    sanitized.push(block);
+  }
+
+  // 2. Insert explicit normal blocks for every unavailable window
+  for (const win of unavailableWindows) {
+    sanitized.push({
+      type: "normal",
+      title: win.title,
+      timeMode: "range",
+      startTime: win.startStr,
+      endTime: win.endStr,
+      notes: win.notes || "Committed unavailable window specified in your notes",
+    });
+  }
+
+  // 3. Re-place any displaced study blocks into open, safe windows (e.g. 08:30-10:30, 10:30-12:30, 20:30-22:00)
+  const candidateSlots = [
+    { start: 8 * 60 + 30, end: 10 * 60 + 30 },
+    { start: 10 * 60 + 45, end: 12 * 60 + 45 },
+    { start: 14 * 60, end: 16 * 60 },
+    { start: 16 * 60 + 15, end: 18 * 60 },
+    { start: 20 * 60 + 30, end: 22 * 60 + 15 },
+  ];
+
+  for (const studyBlock of studyBlocksToRelocate) {
+    // Find an open candidate slot that does not overlap with any unavailable window
+    // and does not overlap with an already scheduled block
+    const safeSlot = candidateSlots.find((slot) => {
+      // Overlaps unavailable window?
+      const windowCollision = unavailableWindows.some((w) =>
+        intervalsOverlap(slot.start, slot.end, w.startMinutes, w.endMinutes)
+      );
+      if (windowCollision) return false;
+
+      // Overlaps existing block?
+      const blockCollision = sanitized.some((b) => {
+        if (!b.startTime) return false;
+        const bs = parseTimeToMinutes(b.startTime);
+        const be = b.endTime ? parseTimeToMinutes(b.endTime) : (bs !== null ? bs + 60 : null);
+        if (bs === null || be === null) return false;
+        return intervalsOverlap(slot.start, slot.end, bs, be);
+      });
+      return !blockCollision;
+    });
+
+    if (safeSlot) {
+      sanitized.push({
+        ...studyBlock,
+        startTime: minutesToTimeString(safeSlot.start),
+        endTime: minutesToTimeString(safeSlot.end),
+      });
+    }
+  }
+
+  // 4. Sort all blocks chronologically
+  sanitized.sort((a, b) => {
+    const aTime = a.startTime ? parseTimeToMinutes(a.startTime) ?? 0 : 0;
+    const bTime = b.startTime ? parseTimeToMinutes(b.startTime) ?? 0 : 0;
+    return aTime - bTime;
+  });
+
+  return sanitized;
+}
+
 export async function generateAiDailySchedule(
   params: GenerateAiScheduleParams
 ): Promise<GenerateAiScheduleResult> {
@@ -68,7 +317,20 @@ export async function generateAiDailySchedule(
     (dbUser?.aiNotepad?.trim() ? `\n${dbUser.aiNotepad.trim()}` : "")
   ).trim();
 
-  // 2. Fetch user's actual database subjects and topics strictly scoped to this user
+  // 2. Fetch user's active preset blocks from PostgreSQL
+  const activePreset = await prisma.routinePreset.findFirst({
+    where: { userId: user.id, isActive: true },
+    orderBy: { updatedAt: "desc" },
+  });
+
+  let presetBlocks: any[] = [];
+  if (activePreset && activePreset.blocks) {
+    try {
+      presetBlocks = JSON.parse(activePreset.blocks);
+    } catch { }
+  }
+
+  // 3. Fetch user's actual database subjects and topics strictly scoped to this user
   const dbSubjects = await prisma.subject.findMany({
     where: { userId: user.id },
     include: {
@@ -87,7 +349,7 @@ export async function generateAiDailySchedule(
     topics: s.topics.map((t) => t.name),
   }));
 
-  // If user has no subjects in DB, check bio or fall back
+  // Fallback subjects only if DB has none
   if (subjects.length === 0) {
     if (params.clientSubjects && params.clientSubjects.length > 0) {
       subjects = params.clientSubjects.map((s, idx) => ({
@@ -106,7 +368,7 @@ export async function generateAiDailySchedule(
     }
   }
 
-  // 3. Fetch topic mastery directly from PostgreSQL for this user
+  // 4. Fetch topic mastery directly from PostgreSQL for this user
   const dbMasteries = await prisma.topicMasteryRecord.findMany({
     where: { userId: user.id },
   });
@@ -117,7 +379,6 @@ export async function generateAiDailySchedule(
     topicMasteryMap[key] = m.percentage;
   }
 
-  // Also include any client-passed mastery if present
   if (params.topicMastery) {
     for (const [k, v] of Object.entries(params.topicMastery)) {
       if (topicMasteryMap[k] === undefined) {
@@ -126,7 +387,7 @@ export async function generateAiDailySchedule(
     }
   }
 
-  // 4. Build topic status breakdown
+  // 5. Build topic status breakdown
   const topicListWithStatus: Array<{
     subject: string;
     topic: string;
@@ -166,9 +427,17 @@ export async function generateAiDailySchedule(
   const eligibleTopics = topicListWithStatus.filter((t) => t.status !== "completed");
   const completedTopics = topicListWithStatus.filter((t) => t.status === "completed");
 
-  // 5. Try Gemini API with strict, unambiguous cognitive constraints
+  // 6. Parse all unavailable windows from notes
+  const combinedUserNotes = `${todayNote}\n${permanentNotes}`;
+  const unavailableWindows = extractUnavailableWindows(combinedUserNotes);
+
+  // 7. Try Gemini API with strict hard constraint directives
   if (isGeminiConfigured()) {
     try {
+      const unavailableDescriptions = unavailableWindows.length > 0
+        ? unavailableWindows.map((w) => `• ${w.title}: ${w.startStr} to ${w.endStr} ("${w.notes}")`).join("\n")
+        : "None identified.";
+
       const prompt = `You are the student's elite personal academic strategist and daily schedule optimizer.
 You must construct an optimal, highly realistic 1-day routine for ${dayOfWeek}, ${dateKey}.
 
@@ -176,11 +445,18 @@ STUDENT PROFILE:
 - Name: ${dbUser?.name || user.username}
 - Studying: ${dbUser?.bio || "General Studies / Exam Preparation"}
 
-PERMANENT NOTES & WEEKLY COMMITMENTS (From Settings/Notepad):
+ACTIVE PRESET FRAMEWORK (Anchor Blocks to respect):
+${presetBlocks.length > 0 ? JSON.stringify(presetBlocks.map((b) => ({ title: b.title, type: b.type, startTime: b.startTime, endTime: b.endTime })), null, 2) : "Default daily flow"}
+
+PERMANENT NOTES & WEEKLY COMMITMENTS:
 ${permanentNotes || "None specified. Regular healthy student routine."}
 
-TEMPORARY NOTE / STUDENT'S WORDS FOR TODAY:
-${todayNote || "None specified. Regular focused study day."}
+STUDENT'S TEMPORARY NOTE / WORDS FOR TODAY:
+${todayNote || "None specified."}
+
+*** PARSED UNAVAILABLE WINDOWS (ABSOLUTE HARD RESTRICTION) ***:
+${unavailableDescriptions}
+CRITICAL MANDATE: The student is NOT available during these hours. You MUST schedule an event/normal block for these hours (e.g. "${unavailableWindows[0]?.title || "Outing"}") and you MUST NEVER schedule any study block between these hours!
 
 STUDENT'S ELIGIBLE SUBJECTS & UNFINISHED TOPICS IN DATABASE:
 ${JSON.stringify(eligibleTopics.slice(0, 40), null, 2)}
@@ -189,34 +465,30 @@ TOPICS ALREADY 100% COMPLETED (STRICT RULE: NEVER SCHEDULE THESE!):
 ${JSON.stringify(completedTopics.map((t) => `${t.subject} - ${t.topic}`), null, 2)}
 
 STRICT SCHEDULING RULES (DO NOT VIOLATE):
-1. ABSOLUTE TIME CONSTRAINTS & OUTINGS:
-   - If the student states in their temporary note or permanent notes that they are going out, having an appointment, attending classes, coaching, or busy during specific hours (e.g. "going out from 3 PM to 6 PM", "dentist at 2 PM", "at coaching 2:30 to 5 PM"), you MUST schedule a normal/event block for that EXACT time window.
-   - You MUST NEVER schedule any study blocks during the hours the student is busy or out!
+1. ABSOLUTE TIME CONSTRAINTS & UNAVAILABILITY:
+   - When the student specifies that they won't be home, are going out, or have appointments during a time window (e.g. from 2:00 PM to 8:00 PM), that entire duration MUST be marked as a normal block (e.g. "Away from Home / Not Home").
+   - ZERO study sessions may occur inside that window! Place study blocks before or after it.
 
 2. MULTI-SUBJECT DIVERSIFICATION (INTERLEAVING):
-   - NEVER stack the same subject for the whole day!
-   - If the student has 2 or more subjects, you MUST alternate and distribute study blocks across DIFFERENT subjects (e.g., Morning: Subject A, Afternoon: Subject B, Evening: Subject C or Arena session).
-   - Rotating subjects prevents mental fatigue and maximizes retention.
+   - NEVER stack the same subject across the whole day!
+   - If the student has 2 or more subjects, you MUST distribute study blocks across DIFFERENT subjects (e.g., Morning: Subject A, Afternoon/Evening: Subject B).
 
 3. EXAM PROXIMITY & TIMELINES:
-   - If the student mentions an upcoming exam date or timeline (e.g. "exam on Friday", "exam in 1 month", "have a test coming up"), calculate the urgency!
-   - Give higher priority, focused practice, and timed MCQ recall blocks to that exam's subject without completely neglecting other responsibilities.
+   - If the student mentions an upcoming exam or test date, prioritize that subject's unfinished topics with timed MCQ recall sessions.
 
-4. REALISTIC AND EMPATHETIC PACING:
-   - If the student mentions feeling tired, sick, having low energy, or limited hours, do NOT schedule intense 8-hour blocks. Use lighter 40-50 minute sprints with generous recovery periods.
-   - Never schedule topics in the COMPLETED list.
-   - Include vital daily blocks: Wake up, meals (Breakfast, Lunch, Dinner), wind-down, and a healthy sleep target (e.g. 11:00 PM).
+4. REALISTIC PACING:
+   - Include wake up, meals, breaks, wind-down, and sleep.
 
 Output strictly valid JSON with this shape:
 {
-  "summary": "Warm, encouraging 1-2 sentence note explaining why this schedule is tailored to their exact notes, energy level, and exam goals.",
+  "summary": "Warm, encouraging 1-2 sentence note explaining why this schedule respects their exact outing/unavailability hours and targets multiple subjects.",
   "blocks": [
     {
       "type": "normal" | "study",
-      "title": "Block Title (e.g. 'Wake up & Morning Refresh', 'Physics Deep Focus', 'Going Out / Free Time', 'Biology MCQ Sprint')",
+      "title": "Block Title",
       "timeMode": "range" | "single",
-      "startTime": "HH:MM (24-hour e.g. 07:00, 14:30)",
-      "endTime": "HH:MM (24-hour e.g. 08:30, 17:00)",
+      "startTime": "HH:MM (24-hour)",
+      "endTime": "HH:MM (24-hour)",
       "subject": "Subject Name (only for study blocks)",
       "topic": "Topic Name (only for study blocks)",
       "notes": "Target or description",
@@ -231,10 +503,13 @@ Output strictly valid JSON with this shape:
       }>(prompt, { temperature: 0.25 });
 
       if (aiResponse && Array.isArray(aiResponse.blocks) && aiResponse.blocks.length > 0) {
+        // Enforce hard constraints even on Gemini's output as an impenetrable safety net
+        const verifiedBlocks = enforceHardConstraints(aiResponse.blocks, unavailableWindows);
+
         return {
           success: true,
           summary: aiResponse.summary || `Personalized schedule ready for ${dayOfWeek}!`,
-          blocks: aiResponse.blocks,
+          blocks: verifiedBlocks,
           generatedBy: "gemini",
         };
       }
@@ -243,36 +518,7 @@ Output strictly valid JSON with this shape:
     }
   }
 
-  // 6. Smart Heuristic Engine (Fallback when Gemini is unavailable)
-  // Parse user constraints from temporary note and permanent notes
-  const combinedText = `${permanentNotes} ${todayNote}`.toLowerCase();
-
-  // Detect outing / busy window (e.g. "from 3 to 6", "from 15:00 to 18:00", "going out 2pm to 5pm")
-  let busyWindow: { start: string; end: string; title: string } | null = null;
-  const outingMatch = combinedText.match(
-    /(?:going\s+out|outing|appointment|dentist|event|busy|doctor|coaching|class)\s*(?:from|at)?\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)\s*(?:to|-)\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)/i
-  );
-
-  const normalizeTime = (tStr: string): string => {
-    const isPm = tStr.toLowerCase().includes("pm");
-    const isAm = tStr.toLowerCase().includes("am");
-    const clean = tStr.replace(/[a-z\s]/gi, "");
-    let [hStr, mStr] = clean.split(":");
-    let h = parseInt(hStr, 10);
-    const m = mStr ? mStr.padStart(2, "0") : "00";
-    if (isPm && h < 12) h += 12;
-    if (isAm && h === 12) h = 0;
-    return `${String(h).padStart(2, "0")}:${m}`;
-  };
-
-  if (outingMatch) {
-    busyWindow = {
-      start: normalizeTime(outingMatch[1]),
-      end: normalizeTime(outingMatch[2]),
-      title: "Outing / Scheduled Event",
-    };
-  }
-
+  // 8. Smart Heuristic Engine (Fallback when Gemini is unavailable)
   // Group eligible topics by subject to enforce multi-subject interleaving
   const subjectsMap = new Map<string, Array<{ topic: string; percentage: number; status: string }>>();
   for (const t of eligibleTopics) {
@@ -282,14 +528,12 @@ Output strictly valid JSON with this shape:
     subjectsMap.get(t.subject)!.push(t);
   }
 
-  // Pick up to 3 study targets across DIFFERENT subjects
   const chosenTargets: Array<{ subject: string; topic: string; note: string }> = [];
   const subjectKeys = Array.from(subjectsMap.keys());
 
   for (let i = 0; i < Math.min(3, subjectKeys.length); i++) {
     const subName = subjectKeys[i];
     const tops = subjectsMap.get(subName)!;
-    // Prefer partial topic, else first not started
     const chosenTopic = tops.find((t) => t.status === "partial") || tops[0];
     if (chosenTopic) {
       chosenTargets.push({
@@ -303,7 +547,6 @@ Output strictly valid JSON with this shape:
     }
   }
 
-  // Fallback if user only had 1 subject: pick multiple topics from that subject
   if (chosenTargets.length < 2 && eligibleTopics.length > 1) {
     for (const t of eligibleTopics) {
       if (!chosenTargets.some((ct) => ct.topic === t.topic)) {
@@ -320,21 +563,21 @@ Output strictly valid JSON with this shape:
   const generatedBlocks: GeneratedBlockDto[] = [
     {
       type: "normal",
-      title: "Wake up & Refresh",
+      title: "Wake up & Morning Refresh",
       timeMode: "single",
       startTime: "07:00",
       notes: "Hydrate & light stretch",
     },
     {
       type: "normal",
-      title: "Breakfast & Fuel",
+      title: "Breakfast & Energy",
       timeMode: "range",
       startTime: "07:30",
       endTime: "08:15",
     },
   ];
 
-  // Block 1: Morning Focus (Subject 1)
+  // Morning Block: Subject 1
   if (chosenTargets[0]) {
     generatedBlocks.push({
       type: "study",
@@ -353,7 +596,7 @@ Output strictly valid JSON with this shape:
     });
   }
 
-  // Block 2: Late Morning (Subject 2 - Different Subject!)
+  // Late Morning: Subject 2
   if (chosenTargets[1]) {
     generatedBlocks.push({
       type: "study",
@@ -376,21 +619,10 @@ Output strictly valid JSON with this shape:
     title: "Lunch & Rest Break",
     timeMode: "range",
     startTime: "12:45",
-    endTime: "14:00",
+    endTime: "13:45",
   });
 
-  // Check if user has an outing / busy window scheduled
-  if (busyWindow) {
-    generatedBlocks.push({
-      type: "normal",
-      title: busyWindow.title,
-      timeMode: "range",
-      startTime: busyWindow.start,
-      endTime: busyWindow.end,
-      notes: "Scheduled appointment / personal commitment",
-    });
-  } else {
-    // Afternoon: Subject 3 or Free Time
+    // Afternoon & Evening default placeholders (will be cleanly reconciled by enforceHardConstraints)
     if (chosenTargets[2]) {
       generatedBlocks.push({
         type: "study",
@@ -409,52 +641,45 @@ Output strictly valid JSON with this shape:
     }
 
     generatedBlocks.push({
-      type: "normal",
-      title: "Free Time / Outdoor Walk",
+      type: "study",
+      title: "MCQ Arena Exam Simulation & Mistakes Review",
+      subject: chosenTargets[0]?.subject || "Exam Prep",
+      topic: "Mixed Rapid Revision",
       timeMode: "range",
-      startTime: "16:30",
-      endTime: "17:45",
+      startTime: "18:30",
+      endTime: "20:00",
+      notes: "Timed speed test to build exam stamina",
+      subtasks: [
+        "2 Arena ranked speed sessions",
+        "Redo uncorrected mistakes",
+      ],
     });
+
+    generatedBlocks.push({
+      type: "normal",
+      title: "Dinner & Family Time",
+      timeMode: "range",
+      startTime: "20:15",
+      endTime: "21:15",
+    });
+
+    generatedBlocks.push({
+      type: "normal",
+      title: "Sleep & Recovery",
+      timeMode: "single",
+      startTime: "23:00",
+      notes: "Rest well to consolidate memory",
+    });
+
+    // Strictly enforce all unavailable windows
+    const finalBlocks = enforceHardConstraints(generatedBlocks, unavailableWindows);
+
+    return {
+      success: true,
+    summary: unavailableWindows.length > 0
+        ? `Tailored routine honoring your unavailable window (${unavailableWindows[0].startStr} - ${unavailableWindows[0].endStr}) with diversified multi-subject study!`
+        : `Interleaved multi-subject schedule balancing ${chosenTargets.map((c) => c.subject).join(", ")} and healthy recovery!`,
+      blocks: finalBlocks,
+      generatedBy: "smart-engine",
+    };
   }
-
-  // Evening Practice & Review
-  generatedBlocks.push({
-    type: "study",
-    title: "MCQ Arena Exam Simulation & Mistakes Review",
-    subject: chosenTargets[0]?.subject || "Exam Prep",
-    topic: "Mixed Rapid Revision",
-    timeMode: "range",
-    startTime: "18:30",
-    endTime: "20:00",
-    notes: "Timed speed test to build exam stamina",
-    subtasks: [
-      "2 Arena ranked speed sessions",
-      "Redo uncorrected mistakes",
-    ],
-  });
-
-  generatedBlocks.push({
-    type: "normal",
-    title: "Dinner & Family Time",
-    timeMode: "range",
-    startTime: "20:15",
-    endTime: "21:30",
-  });
-
-  generatedBlocks.push({
-    type: "normal",
-    title: "Sleep & Recovery",
-    timeMode: "single",
-    startTime: "23:00",
-    notes: "Rest well to consolidate memory",
-  });
-
-  return {
-    success: true,
-    summary: busyWindow
-      ? `Tailored routine honoring your ${busyWindow.title} (${busyWindow.start} - ${busyWindow.end}) with diversified study blocks!`
-      : `Interleaved multi-subject schedule balancing ${chosenTargets.map((c) => c.subject).join(", ")} and healthy recovery!`,
-    blocks: generatedBlocks,
-    generatedBy: "smart-engine",
-  };
-}
