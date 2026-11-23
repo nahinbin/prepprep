@@ -3,17 +3,15 @@ import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import {
   User as UserIcon,
-  Zap,
-  Gamepad2,
   Crosshair,
   Sparkles,
   Play,
   RotateCcw,
-  Shield,
   ChevronRight,
   Flame,
   Bell,
   ArrowRight,
+  CalendarCheck,
 } from "lucide-react";
 import Link from "next/link";
 import { NavMenu, AppShell } from "@/components/NavMenu";
@@ -58,6 +56,20 @@ export default async function Dashboard() {
   const accuracy = calcAccuracy(dbUser.sessions);
   const lvl = getLevelInfo(netXp);
   const recoverableXp = uncorrectedMistakes * (economySettings.redoXpRecovery ?? 5);
+
+  // Fetch today's next incomplete routine block
+  const todayKey = new Date().toISOString().split("T")[0];
+  let nextRoutineBlock: {
+    id: string; type: string; title: string; startTime: string | null;
+    subject: string | null; topic: string | null;
+  } | null = null;
+  try {
+    nextRoutineBlock = await prisma.routineBlock.findFirst({
+      where: { userId: user.id, date: todayKey, isCompleted: false },
+      orderBy: [{ startTime: "asc" }, { order: "asc" }],
+      select: { id: true, type: true, title: true, startTime: true, subject: true, topic: true },
+    });
+  } catch { nextRoutineBlock = null; }
 
   // Fetch the latest unread notification if any
   let latestNotification = null;
@@ -136,11 +148,69 @@ export default async function Dashboard() {
           </Link>
         )}
 
-        {/* Performance Stats Box */}
+        {/* Today's Plan */}
         <div>
-          <h3 className="text-xs font-black uppercase tracking-wider text-muted-foreground mb-2.5 pl-1">
-            Performance & Stats
-          </h3>
+          <div className="flex items-center justify-between mb-2.5">
+            <h3 className="text-xs font-black uppercase tracking-wider text-muted-foreground pl-1">Today</h3>
+            <a href="/routine" className="text-xs font-bold text-muted-foreground hover:text-primary flex items-center gap-0.5 transition-colors">
+              Open Plan <ChevronRight className="w-3.5 h-3.5" />
+            </a>
+          </div>
+          <a
+            href="/routine"
+            className="group flex items-center justify-between p-4 rounded-2xl bg-card border-2 border-border/80 hover:border-primary/40 transition-all active:scale-[0.99] shadow-sm"
+          >
+            {nextRoutineBlock ? (
+              <>
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                    nextRoutineBlock.type === "study" ? "bg-violet-500/15 text-violet-400" : "bg-primary/10 text-primary"
+                  }`}>
+                    <CalendarCheck className="w-5 h-5" />
+                  </div>
+                  <div className="min-w-0">
+                    {nextRoutineBlock.startTime && (
+                      <p className="text-[11px] font-black uppercase tracking-wide text-muted-foreground">
+                        {(() => {
+                          const [h, m] = nextRoutineBlock.startTime!.split(":").map(Number);
+                          return `${h % 12 || 12}:${String(m).padStart(2, "0")} ${h >= 12 ? "PM" : "AM"}`;
+                        })()}
+                      </p>
+                    )}
+                    <p className="font-black text-foreground truncate">
+                      {nextRoutineBlock.type === "study"
+                        ? (nextRoutineBlock.subject || nextRoutineBlock.title)
+                        : nextRoutineBlock.title}
+                    </p>
+                    {nextRoutineBlock.type === "study" && nextRoutineBlock.topic && (
+                      <p className="text-xs font-semibold text-violet-400 truncate">{nextRoutineBlock.topic}</p>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-1 text-muted-foreground group-hover:text-primary transition-colors shrink-0">
+                  <span className="text-[11px] font-bold uppercase tracking-wide">Up next</span>
+                  <ChevronRight className="w-4 h-4" />
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                    <CalendarCheck className="w-5 h-5 text-primary" />
+                  </div>
+                  <div>
+                    <p className="font-black text-foreground">Plan your day</p>
+                    <p className="text-xs text-muted-foreground">No schedule yet — tap to build one</p>
+                  </div>
+                </div>
+                <ChevronRight className="w-5 h-5 text-muted-foreground group-hover:text-primary transition-colors" />
+              </>
+            )}
+          </a>
+        </div>
+
+        {/* Stats */}
+        <div>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             {/* Accuracy Box */}
             <div className="p-4 sm:p-5 rounded-[1.35rem] bg-card border-2 border-border/80 flex flex-col justify-between gap-1.5 shadow-sm hover:border-primary/40 transition-all">
@@ -187,11 +257,9 @@ export default async function Dashboard() {
           </div>
         </div>
 
-        {/* Game Arena Play Cards */}
+        {/* Game Arena */}
         <div>
-          <h3 className="text-xs font-black uppercase tracking-wider text-muted-foreground mb-2.5 pl-1">
-            Game Arena
-          </h3>
+          <h3 className="text-xs font-black uppercase tracking-wider text-muted-foreground mb-2.5 pl-1">Arena</h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
             {/* Start Ranked Session */}
             <Link

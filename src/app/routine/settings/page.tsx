@@ -244,7 +244,7 @@ export default function RoutineSettingsPage() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <User className="w-5 h-5 text-primary" />
-              <h2 className="text-lg font-black text-foreground">Your Profile & Goals</h2>
+              <h2 className="text-lg font-black text-foreground">Profile</h2>
             </div>
             <button
               type="button"
@@ -260,7 +260,7 @@ export default function RoutineSettingsPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wide mb-1.5 pl-1">
-                Your Name / Preferred Name
+                Your Name
               </label>
               <input
                 type="text"
@@ -270,14 +270,11 @@ export default function RoutineSettingsPage() {
                 maxLength={30}
                 className="w-full px-4 py-2.5 rounded-xl bg-black/25 border border-white/10 text-foreground font-bold text-sm focus:outline-none focus:border-primary"
               />
-              <span className="block text-[11px] text-muted-foreground mt-1 pl-1">
-                AI will always call you by this name.
-              </span>
             </div>
 
             <div>
               <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wide mb-1.5 pl-1">
-                What are you studying?
+                Studying for
               </label>
               <input
                 type="text"
@@ -287,34 +284,14 @@ export default function RoutineSettingsPage() {
                 maxLength={60}
                 className="w-full px-4 py-2.5 rounded-xl bg-black/25 border border-white/10 text-foreground font-bold text-sm focus:outline-none focus:border-primary"
               />
-              <span className="block text-[11px] text-muted-foreground mt-1 pl-1">
-                Goals & exams for smart recommendations.
-              </span>
             </div>
           </div>
         </section>
 
-        {/* 1. Notepad (Requested by user: Just 'Notepad' with small text under, Save button is icon only) */}
-        <section className="rounded-3xl bg-card border border-white/10 p-5 sm:p-6 space-y-4">
-          <div>
+        {/* Notepad */}
+        <section className="rounded-3xl bg-card border border-white/10 p-5 sm:p-6 space-y-3">
+          <div className="flex items-center justify-between">
             <h2 className="text-lg font-black text-foreground">Notepad</h2>
-            <p className="text-xs text-muted-foreground font-medium mt-0.5">
-              Write everything here that AI might need to know about your timings, coaching days, or habits.
-            </p>
-          </div>
-
-          <textarea
-            rows={5}
-            value={notepadText}
-            onChange={(e) => setNotepadText(e.target.value)}
-            placeholder="e.g. Coaching on Monday, Wednesday, and Friday from 2:30 PM to 5:00 PM. Target sleep by 11:00 PM..."
-            className="w-full px-4 py-3 rounded-2xl bg-black/25 border border-white/10 text-foreground text-sm font-medium focus:outline-none focus:border-primary transition-all resize-none leading-relaxed"
-          />
-
-          <div className="flex items-center justify-between pt-1">
-            <span className="text-[11px] text-muted-foreground">
-              Automatically considered when generating daily schedules.
-            </span>
             <button
               type="button"
               onClick={handleSaveNotepad}
@@ -325,10 +302,18 @@ export default function RoutineSettingsPage() {
               {notepadSaved ? <Check className="w-5 h-5" /> : <Save className="w-5 h-5" />}
             </button>
           </div>
+
+          <textarea
+            rows={5}
+            value={notepadText}
+            onChange={(e) => setNotepadText(e.target.value)}
+            placeholder="Coaching schedule, habits, timing constraints... AI uses this when generating schedules."
+            className="w-full px-4 py-3 rounded-2xl bg-black/25 border border-white/10 text-foreground text-sm font-medium focus:outline-none focus:border-primary transition-all resize-none leading-relaxed"
+          />
         </section>
 
-        {/* 2. AI Assistant Nickname (No long description underneath, default AI Assistant) */}
-        <section className="rounded-3xl bg-card border border-white/10 p-5 sm:p-6 space-y-4">
+        {/* AI Nickname */}
+        <section className="rounded-3xl bg-card border border-white/10 p-5 sm:p-6 space-y-3">
           <div className="flex items-center gap-2">
             <Bot className="w-4 h-4 text-primary" />
             <h2 className="text-lg font-black text-foreground">AI Assistant Nickname</h2>
@@ -355,7 +340,7 @@ export default function RoutineSettingsPage() {
           </div>
         </section>
 
-        {/* 3. Presets Manager (Editable, customizable, can add and delete presets) */}
+        {/* Presets */}
         <section className="rounded-3xl bg-card border border-white/10 p-5 sm:p-6 space-y-4">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2">

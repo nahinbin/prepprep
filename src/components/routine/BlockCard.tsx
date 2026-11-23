@@ -234,13 +234,12 @@ export function BlockCard({
 
           {/* Right: Dropdown toggle & More Menu */}
           <div className="flex items-center gap-1.5 shrink-0">
-            {/* Dropdown Accordion Toggle Button */}
+            {/* Accordion Toggle */}
             <button
               onClick={() => setIsExpanded(!isExpanded)}
-              className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-violet-500/15 hover:bg-violet-500/25 border border-violet-500/30 text-violet-300 text-xs font-bold transition-all active:scale-95"
-              aria-label="Toggle details dropdown"
+              className="w-8 h-8 rounded-xl bg-violet-500/15 hover:bg-violet-500/25 border border-violet-500/30 text-violet-300 flex items-center justify-center transition-all active:scale-95"
+              aria-label="Toggle details"
             >
-              <span>{isExpanded ? "Hide" : "Details"}</span>
               {isExpanded ? (
                 <ChevronUp className="w-4 h-4" />
               ) : (
@@ -311,12 +310,9 @@ export function BlockCard({
       {/* Accordion / Dropdown Details (Expands when clicked) */}
       {isExpanded && (
         <div className="px-5 pb-5 pt-1 border-t border-violet-500/20 bg-black/20 space-y-3.5 animate-in fade-in duration-200">
-          {/* Notes / Key Concepts */}
+          {/* Notes */}
           {block.notes && (
             <div className="p-3 rounded-2xl bg-white/5 border border-white/5">
-              <span className="text-[10px] font-black uppercase tracking-wider text-violet-400 block mb-1">
-                Focus Objectives & Notes
-              </span>
               <p className="text-xs sm:text-sm text-foreground/90 whitespace-pre-wrap leading-relaxed">
                 {block.notes}
               </p>

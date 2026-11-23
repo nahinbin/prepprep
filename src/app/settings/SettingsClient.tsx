@@ -31,11 +31,11 @@ export function SettingsClient({ user }: { user: UserType | null }) {
 
   return (
     <AppShell showBottomBar={false}>
-      <div className="w-full max-w-2xl mx-auto px-4 py-5 md:py-8 space-y-6">
+      <div className="w-full max-w-2xl mx-auto px-4 py-5 md:py-8 space-y-5">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             <BackButton />
-            <h1 className="text-2xl md:text-3xl font-black tracking-tight text-foreground">Settings</h1>
+            <h1 className="text-2xl font-black tracking-tight text-foreground">Settings</h1>
           </div>
           <div className="flex items-center gap-2">
             <QuickMuteButton />
@@ -44,14 +44,14 @@ export function SettingsClient({ user }: { user: UserType | null }) {
         </div>
 
         {user && (
-          <div className="rounded-3xl bg-card border-2 border-border shadow-sm overflow-hidden">
-            <div className="p-4 bg-muted/30 border-b border-border/50">
-              <h2 className="text-sm font-black uppercase tracking-wider text-muted-foreground flex items-center gap-2">
-                <User className="w-4 h-4" />
-                Public Profile
+          <div className="rounded-2xl bg-card border border-border/60 overflow-hidden">
+            <div className="px-4 pt-4 pb-2">
+              <h2 className="text-xs font-black uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                <User className="w-3.5 h-3.5" />
+                Profile
               </h2>
             </div>
-            <div className="divide-y divide-border/50">
+            <div className="divide-y divide-border/40">
               <SettingRow 
                 label="Username" 
                 value={user.username} 
@@ -92,14 +92,14 @@ export function SettingsClient({ user }: { user: UserType | null }) {
         <SoundSettingsPanel />
 
         {user && (
-          <div className="rounded-3xl bg-card border-2 border-border shadow-sm overflow-hidden">
-            <div className="p-4 bg-muted/30 border-b border-border/50">
-              <h2 className="text-sm font-black uppercase tracking-wider text-muted-foreground flex items-center gap-2">
-                <Shield className="w-4 h-4" />
+          <div className="rounded-2xl bg-card border border-border/60 overflow-hidden">
+            <div className="px-4 pt-4 pb-2">
+              <h2 className="text-xs font-black uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                <Shield className="w-3.5 h-3.5" />
                 Account & Privacy
               </h2>
             </div>
-            <div className="divide-y divide-border/50">
+            <div className="divide-y divide-border/40">
               <SettingRow 
                 label="Email Address" 
                 value={user.email || "Not set"} 
@@ -112,11 +112,11 @@ export function SettingsClient({ user }: { user: UserType | null }) {
                 isPending={isPending}
               />
               
-              <form action={togglePrivacy} className="w-full flex items-center justify-between p-4 hover:bg-muted/30 transition-colors">
+              <form action={togglePrivacy} className="w-full flex items-center justify-between p-4 hover:bg-muted/20 transition-colors">
                 <div className="space-y-0.5">
                   <p className="font-bold text-foreground">Public Account</p>
-                  <p className="text-[11px] font-medium text-muted-foreground max-w-[200px] sm:max-w-xs">
-                    {user.isPublic ? "Anyone can view your stats and leaderboard rank." : "Only friends can view your stats and rank."}
+                  <p className="text-[11px] font-medium text-muted-foreground">
+                    {user.isPublic ? "Visible on leaderboards" : "Hidden from leaderboards"}
                   </p>
                 </div>
                 

@@ -318,18 +318,17 @@ export default function RoutinePage() {
             </button>
           </div>
 
-          {/* Right: AI Schedule + Single Calendar Icon + Settings Icon Only */}
           <div className="flex items-center gap-2 shrink-0">
-            {/* Quick AI Generator Button */}
+            {/* AI Schedule — icon only */}
             <button
               onClick={() => setIsAiGeneratorOpen(true)}
-              className="hidden sm:inline-flex items-center gap-1.5 px-3 py-2 rounded-2xl bg-gradient-to-r from-violet-600 to-primary text-white text-xs font-black shadow-md shadow-violet-600/30 hover:brightness-110 active:scale-95 transition-all"
+              className="w-11 h-11 rounded-2xl bg-gradient-to-br from-violet-600/80 to-primary/80 hover:brightness-110 text-white flex items-center justify-center shadow-md shadow-violet-600/20 transition-all active:scale-95"
+              aria-label="Build with AI"
             >
-              <Sparkles className="w-4 h-4" />
-              <span>AI Schedule</span>
+              <Sparkles className="w-5 h-5" />
             </button>
 
-            {/* Single Quick Calendar Icon Button */}
+            {/* Calendar */}
             <button
               onClick={() => setIsCalendarOpen(true)}
               className="w-11 h-11 rounded-2xl bg-card hover:bg-white/10 border border-white/10 text-muted-foreground hover:text-foreground flex items-center justify-center transition-all active:scale-95 shadow-sm"
@@ -338,7 +337,7 @@ export default function RoutinePage() {
               <CalendarIcon className="w-5 h-5" />
             </button>
 
-            {/* Settings Button: Dedicated Settings Page (Icon only) */}
+            {/* Settings */}
             <Link
               href="/routine/settings"
               className="w-11 h-11 rounded-2xl bg-card hover:bg-white/10 border border-white/10 text-muted-foreground hover:text-foreground flex items-center justify-center transition-all active:scale-95 shadow-sm"
@@ -347,7 +346,6 @@ export default function RoutinePage() {
               <SettingsIcon className="w-5 h-5" />
             </Link>
 
-            {/* Mobile Navigation Menu */}
             <NavMenu />
           </div>
         </header>
@@ -448,12 +446,12 @@ export default function RoutinePage() {
           </div>
         )}
 
-        {/* Quick Add Bar */}
+        {/* Quick Add Bar — desktop only (mobile uses FAB) */}
         {totalCount > 0 && (
-          <div className="flex items-center gap-2 pt-2">
+          <div className="hidden sm:flex items-center gap-2 pt-2">
             <button
               onClick={() => setIsAiGeneratorOpen(true)}
-              className="flex-1 py-3 px-3 rounded-2xl bg-gradient-to-r from-violet-600/20 to-primary/20 hover:from-violet-600/30 hover:to-primary/30 border border-violet-500/30 text-violet-300 font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all active:scale-98"
+              className="flex-1 py-3 px-4 rounded-2xl bg-gradient-to-r from-violet-600/20 to-primary/20 hover:from-violet-600/30 hover:to-primary/30 border border-violet-500/30 text-violet-300 font-bold text-sm flex items-center justify-center gap-2 transition-all active:scale-98"
             >
               <Sparkles className="w-4 h-4 text-violet-400" />
               <span>Build with AI</span>
@@ -461,18 +459,10 @@ export default function RoutinePage() {
 
             <button
               onClick={() => handleAddNew("study")}
-              className="flex-1 py-3 px-3 rounded-2xl bg-violet-600/20 hover:bg-violet-600/30 border border-violet-500/30 text-violet-300 font-bold text-xs sm:text-sm flex items-center justify-center gap-1.5 transition-all active:scale-98"
-            >
-              <BookOpen className="w-4 h-4 text-violet-400" />
-              <span>+ Study</span>
-            </button>
-
-            <button
-              onClick={() => handleAddNew("normal")}
-              className="flex-1 py-3 px-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-foreground font-bold text-xs sm:text-sm flex items-center justify-center gap-1.5 transition-all active:scale-98"
+              className="flex-1 py-3 px-4 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-foreground font-bold text-sm flex items-center justify-center gap-1.5 transition-all active:scale-98"
             >
               <Plus className="w-4 h-4" />
-              <span>+ Block</span>
+              <span>Add Block</span>
             </button>
           </div>
         )}
