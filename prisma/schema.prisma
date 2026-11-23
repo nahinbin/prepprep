@@ -42,6 +42,7 @@ model User {
   routinePresets  RoutinePreset[]
   chatSessions    AiChatSession[]
   topicMasteries  TopicMasteryRecord[]
+  assessments     Assessment[]
   aiName          String            @default("AI Assistant")
   aiNotepad       String            @default("")
 }
@@ -262,5 +263,31 @@ model TopicMasteryRecord {
 
   @@unique([userId, subject, topic])
   @@index([userId])
+}
+
+model Assessment {
+  id               String   @id @default(cuid())
+  userId           String
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name             String
+  topic            String?
+  subjectName      String
+  dueDate          DateTime
+  totalMarks       Int
+  weight           Float?
+  description      String?
+  status           String   @default("not_started")
+  // not_started | in_progress | completed | submitted | marks_received
+  estimatedMarks   Float?
+  obtainedMarks    Float?
+  remindersEnabled Boolean  @default(true)
+  remindersSent    String   @default("[]")
+  // JSON array of sent intervals: ["1_week","3_days","1_day","1_hour"]
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([userId])
+  @@index([userId, subjectName])
+  @@index([userId, dueDate])
 }
 

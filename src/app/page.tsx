@@ -12,6 +12,7 @@ import {
   Bell,
   ArrowRight,
   CalendarCheck,
+  GraduationCap,
 } from "lucide-react";
 import Link from "next/link";
 import { NavMenu, AppShell } from "@/components/NavMenu";
@@ -70,6 +71,23 @@ export default async function Dashboard() {
       select: { id: true, type: true, title: true, startTime: true, subject: true, topic: true },
     });
   } catch { nextRoutineBlock = null; }
+
+  // Fetch upcoming deadlines (next 7 days, not submitted/marked)
+  let upcomingDeadlines: Array<{id:string; name:string; subjectName:string; dueDate:Date; status:string}> = [];
+  try {
+    const now = new Date();
+    const weekAhead = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+    upcomingDeadlines = await prisma.assessment.findMany({
+      where: {
+        userId: user.id,
+        dueDate: { gte: now, lte: weekAhead },
+        status: { notIn: ["submitted", "marks_received"] }
+      },
+      orderBy: { dueDate: "asc" },
+      take: 2,
+      select: { id: true, name: true, subjectName: true, dueDate: true, status: true }
+    });
+  } catch { upcomingDeadlines = []; }
 
   // Fetch the latest unread notification if any
   let latestNotification = null;
@@ -208,6 +226,41 @@ export default async function Dashboard() {
             )}
           </a>
         </div>
+
+        {/* Upcoming Deadlines */}
+        {upcomingDeadlines.length > 0 && (
+          <div>
+            <div className="flex items-center justify-between mb-2.5">
+              <h3 className="text-xs font-black uppercase tracking-wider text-muted-foreground pl-1">Deadlines</h3>
+              <Link href="/academics" className="text-xs font-bold text-muted-foreground hover:text-primary flex items-center gap-0.5 transition-colors">
+                View all <ChevronRight className="w-3.5 h-3.5" />
+              </Link>
+            </div>
+            <div className="space-y-2">
+              {upcomingDeadlines.map(d => {
+                const daysLeft = Math.ceil((d.dueDate.getTime() - Date.now()) / 86400000);
+                const isToday = daysLeft <= 0;
+                const isTomorrow = daysLeft === 1;
+                return (
+                  <Link key={d.id} href="/academics" className="flex items-center justify-between p-3.5 rounded-2xl bg-card border border-border/60 hover:border-primary/40 transition-all active:scale-[0.99]">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${isToday ? 'bg-danger/15 text-danger' : 'bg-amber-500/10 text-amber-400'}`}>
+                        <GraduationCap className="w-4 h-4" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="font-bold text-foreground text-sm truncate">{d.name}</p>
+                        <p className="text-xs text-muted-foreground">{d.subjectName}</p>
+                      </div>
+                    </div>
+                    <span className={`text-[11px] font-black uppercase px-2 py-0.5 rounded-lg shrink-0 ${isToday ? 'bg-danger/15 text-danger' : isTomorrow ? 'bg-amber-500/15 text-amber-400' : 'bg-white/5 text-muted-foreground'}`}>
+                      {isToday ? 'Today' : isTomorrow ? 'Tomorrow' : `${daysLeft}d`}
+                    </span>
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Stats */}
         <div>

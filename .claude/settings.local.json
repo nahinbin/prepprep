@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node:*)",
+      "Bash(npx prisma:*)",
+      "Bash(PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION=\"Yes, proceed with \\\\`npx prisma db push --accept-data-loss\\\\`. This is a development database — only adding new tables, nothing destructive.\" npx prisma db push --accept-data-loss)"
+    ]
+  }
+}

@@ -17,6 +17,7 @@ import {
   Users,
   CalendarCheck,
   Bot,
+  GraduationCap,
 } from "lucide-react";
 import { logout } from "@/app/actions/auth";
 import { Suspense } from "react";
@@ -49,6 +50,7 @@ function NavLinks({
   const links = [
     { href: "/", label: "Home", icon: Home, match: (p: string) => p === "/" },
     { href: "/routine", label: "Daily Routine", icon: CalendarCheck, match: (p: string) => p === "/routine" || p === "/planner" || p === "/schedule" },
+    { href: "/academics", label: "Academics", icon: GraduationCap, match: (p: string) => p.startsWith("/academics") },
     { href: "/chat", label: aiName || "AI Assistant", icon: Bot, match: (p: string) => p === "/chat" },
     { href: "/notifications", label: "Notifications", icon: Bell, match: (p: string) => p === "/notifications" },
     { href: "/questions", label: "Question Bank", icon: Database, match: (p: string) => p === "/questions" },
