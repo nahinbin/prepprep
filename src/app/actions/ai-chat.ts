@@ -13,8 +13,8 @@ import { getSession } from "@/app/actions/auth";
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 import { generateAiDailySchedule } from "@/app/actions/ai-schedule";
-import { bulkCreateDbRoutineBlocks } from "@/app/actions/routine";
 import { saveGeneratedQuestionsToBank } from "@/app/actions/questions";
+import { createAssessment } from "@/app/actions/assessments";
 
 const DEFAULT_AI_NAME = "AI Assistant";
 
@@ -49,7 +49,8 @@ export interface ChatMessage {
       | "updated_notepad"
       | "changed_name"
       | "generated_schedule"
-      | "created_quiz";
+      | "created_quiz"
+      | "created_assessment";
     subjectName?: string;
     newSubjectName?: string;
     topicName?: string;
@@ -68,6 +69,19 @@ export interface ChatMessage {
       endTime?: string;
       notes?: string;
     };
+    pendingBlocks?: Array<{
+      date: string;
+      type: "study" | "normal";
+      title: string;
+      timeMode?: "range" | "single" | "anytime";
+      startTime?: string;
+      endTime?: string;
+      subject?: string;
+      topic?: string;
+      notes?: string;
+      order?: number;
+    }>;
+    assessmentCreated?: { name: string; subjectName: string; dueDate: string };
   };
   generatedQuiz?: GeneratedQuiz;
   timestamp: number;
@@ -397,40 +411,32 @@ export async function sendChatMessage(
     });
 
     if (schedRes.success && schedRes.blocks.length > 0) {
-      await bulkCreateDbRoutineBlocks(
-        schedRes.blocks.map((b, idx) => ({
-          date: dateKey,
-          type: b.type,
-          title: b.title,
-          timeMode: b.timeMode || "range",
-          startTime: b.startTime,
-          endTime: b.endTime,
-          isCompleted: false,
-          subject: b.subject,
-          topic: b.topic,
-          notes: b.notes,
-          subtasks: b.subtasks?.map((st, sIdx) => ({
-            id: `st_${Date.now()}_${sIdx}`,
-            text: st,
-            completed: false,
-          })),
-          order: idx,
-        }))
-      );
-      revalidatePath("/routine");
-
       const blocksSummary = schedRes.blocks
         .slice(0, 8)
         .map((b) => `• **${b.startTime || "Anytime"} - ${b.endTime || ""}:** ${b.title}${b.subject ? ` *(${b.subject})*` : ""}`)
         .join("\n");
 
+      const pendingBlocks = schedRes.blocks.map((b, idx) => ({
+        date: dateKey,
+        type: b.type,
+        title: b.title,
+        timeMode: (b.timeMode || "range") as "range" | "single" | "anytime",
+        startTime: b.startTime,
+        endTime: b.endTime,
+        subject: b.subject,
+        topic: b.topic,
+        notes: b.notes,
+        order: idx,
+      }));
+
       const schedMsg: ChatMessage = {
         id: "msg_" + Date.now().toString(36),
         role: "assistant",
-        content: `📅 **I've crafted your personalized daily schedule for today!**\n\n${schedRes.summary}\n\n**Schedule Breakdown:**\n${blocksSummary}\n\nAll **${schedRes.blocks.length} blocks** are saved directly to your Daily Routine database.`,
+        content: `📅 **Here's your personalized schedule for today!**\n\n${schedRes.summary}\n\n**Schedule Breakdown:**\n${blocksSummary}\n\n**${schedRes.blocks.length} blocks ready** — review and save when you're happy with it.`,
         actionTaken: {
           type: "generated_schedule",
           scheduleSummary: schedRes.summary,
+          pendingBlocks,
         },
         timestamp: Date.now(),
       };
@@ -785,6 +791,72 @@ Return valid raw JSON matching this shape:
   }
 
   // =========================================================================
+  // 15. Create Assessment/Assignment from chat
+  // e.g. "add assignment Lab Report for Physics due March 15"
+  // =========================================================================
+  const isAssignmentRequest =
+    (lower.includes("add") || lower.includes("create") || lower.includes("schedule")) &&
+    (lower.includes("assignment") || lower.includes("assessment") ||
+      lower.includes("deadline") || lower.includes("exam") || lower.includes("submission") || lower.includes("test")) &&
+    lower.includes("due");
+
+  if (isAssignmentRequest && isGeminiConfigured()) {
+    try {
+      const today = new Date();
+      const parsePrompt = `Today is ${today.toISOString().split("T")[0]}. The student said:
+"${trimmed}"
+
+Extract all assignments/assessments mentioned. For each one, extract:
+- name: the assignment/exam name
+- subjectName: the subject it belongs to (extract from the message)
+- dueDate: ISO date string (YYYY-MM-DD format). Convert relative dates like "March 15" to absolute dates. If only a date without year is given, use ${today.getFullYear()} unless it would be in the past, then use ${today.getFullYear() + 1}.
+- totalMarks: number if mentioned, otherwise 100
+
+Return valid JSON:
+{
+  "assignments": [
+    { "name": "Lab Report", "subjectName": "Physics", "dueDate": "2026-03-15", "totalMarks": 100 }
+  ]
+}
+
+Return only JSON, no other text.`;
+
+      const parsed = await generateGeminiJson<{
+        assignments: Array<{ name: string; subjectName: string; dueDate: string; totalMarks: number }>;
+      }>(parsePrompt, { temperature: 0.1 });
+
+      if (parsed?.assignments && parsed.assignments.length > 0) {
+        const created: string[] = [];
+        for (const a of parsed.assignments) {
+          try {
+            await createAssessment({
+              name: a.name,
+              subjectName: a.subjectName,
+              dueDate: new Date(a.dueDate).toISOString(),
+              totalMarks: a.totalMarks || 100,
+            });
+            created.push(`**${a.name}** (${a.subjectName}) — due ${a.dueDate}`);
+          } catch {}
+        }
+
+        if (created.length > 0) {
+          const responseMsg: ChatMessage = {
+            id: "msg_" + Date.now().toString(36),
+            role: "assistant",
+            content: `✅ Added ${created.length === 1 ? "assignment" : `${created.length} assignments`} to your Academics tracker:\n\n${created.map((c) => `• ${c}`).join("\n")}\n\nYou'll get reminders at 1 week, 3 days, 1 day, and 1 hour before each deadline.`,
+            actionTaken: { type: "created_assessment" },
+            timestamp: Date.now(),
+          };
+          if (sessionId) await saveDbChatMessage(sessionId, responseMsg);
+          return responseMsg;
+        }
+      }
+    } catch (e) {
+      console.warn("Assignment parse error:", e);
+    }
+  }
+
+  // =========================================================================
   // LAYER 2: GEMINI AI INTENT PARSER & CONVERSATIONAL CONTROLLER
   // =========================================================================
 
@@ -810,6 +882,14 @@ Current user's database subjects:
 ${subjectsContext || "No subjects added yet."}
 User's Permanent Routine Rules:
 ${dbUser?.aiNotepad || "Standard student schedule."}
+
+RESPONSE STYLE (VERY IMPORTANT):
+- Be concise and human. Short question = short answer. Don't pad responses.
+- Use conversational language, not formal essay style.
+- Skip unnecessary preambles like "Great question!" or "Certainly!".
+- For simple facts or confirmations, 1-3 sentences is enough.
+- Only elaborate when truly needed (complex explanations, multi-step plans).
+- Never start with the student's name in every single reply.
 `;
 
       const conversationPrompt =

@@ -24,6 +24,7 @@ import { Suspense } from "react";
 import { BottomBar } from "@/components/BottomBar";
 import { QuickMuteButton } from "@/components/QuickMuteButton";
 import { getAiAssistantName } from "@/lib/routineStorage";
+import { NotificationSheet } from "@/components/NotificationSheet";
 
 const ShellCtx = createContext<{ mistakeCount: number }>({ mistakeCount: 0 });
 
@@ -127,6 +128,7 @@ export function Sidebar() {
 
 export function NavMenu() {
   const [open, setOpen] = useState(false);
+  const [notifOpen, setNotifOpen] = useState(false);
 
   return (
     <>
@@ -139,46 +141,63 @@ export function NavMenu() {
       </button>
 
       {open && (
-        <div className="fixed inset-0 z-50 md:hidden">
-          <div
-            className="absolute inset-0 bg-black/65 backdrop-blur-sm"
-            onClick={() => setOpen(false)}
-          />
-          <div className="absolute top-[max(0.5rem,env(safe-area-inset-top))] right-2 bottom-[max(0.5rem,env(safe-area-inset-bottom))] w-[min(20rem,calc(100vw-1rem))] bg-card border border-white/10 shadow-2xl rounded-[1.75rem] overflow-hidden flex flex-col">
-            <div className="flex items-center justify-end p-5 pb-2">
-              <button
-                onClick={() => setOpen(false)}
-                className="inline-flex items-center justify-center w-11 h-11 rounded-2xl hover:bg-muted transition-colors"
-                aria-label="Close menu"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <NavLinksSafe onNavigate={() => setOpen(false)} className="px-3 space-y-1.5 flex-1" />
-
-            <div className="p-3 border-t border-white/5 flex gap-2">
-              <form action={logout} className="flex-1">
+        <>
+          <div className="fixed inset-0 z-50 md:hidden">
+            <div className="absolute inset-0 bg-black/65 backdrop-blur-sm" onClick={() => setOpen(false)} />
+            <div className="absolute inset-y-0 right-0 w-[min(20rem,calc(100vw-1rem))] bg-card border-l border-white/10 shadow-2xl flex flex-col">
+              {/* Header */}
+              <div className="flex items-center justify-between px-5 py-4 border-b border-white/5">
+                <Link href="/" onClick={() => setOpen(false)} className="flex items-center gap-2 text-primary">
+                  <Home className="w-5 h-5" />
+                  <span className="font-black text-sm tracking-tight">MCQ Arena</span>
+                </Link>
                 <button
-                  type="submit"
-                  className="flex items-center gap-3 w-full px-4 py-3.5 rounded-2xl text-base font-bold text-danger hover:bg-danger/10 transition-all"
+                  onClick={() => setOpen(false)}
+                  className="inline-flex items-center justify-center w-9 h-9 rounded-xl hover:bg-muted transition-colors"
+                  aria-label="Close menu"
                 >
-                  <LogOut className="w-5 h-5 shrink-0" />
-                  Logout
+                  <X className="w-5 h-5" />
                 </button>
-              </form>
-              <QuickMuteButton className="w-12 h-auto rounded-2xl border-white/10" />
-              <Link
-                href="/settings"
-                onClick={() => setOpen(false)}
-                className="flex items-center justify-center w-12 rounded-2xl text-muted-foreground hover:text-foreground hover:bg-white/5 transition-all"
-                aria-label="Settings"
-              >
-                <Settings className="w-5 h-5" />
-              </Link>
+              </div>
+
+              {/* Nav Links */}
+              <NavLinksSafe onNavigate={() => setOpen(false)} className="px-3 py-2 space-y-1 flex-1 overflow-y-auto" />
+
+              {/* Bottom Actions */}
+              <div className="p-3 border-t border-white/5">
+                <div className="flex gap-2 mb-2">
+                  <button
+                    type="button"
+                    onClick={() => setNotifOpen(true)}
+                    className="flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl text-sm font-semibold text-muted-foreground hover:text-foreground hover:bg-white/5 transition-all border border-white/5"
+                    aria-label="Notifications"
+                  >
+                    <Bell className="w-4 h-4" />
+                    <span>Notifications</span>
+                  </button>
+                </div>
+                <div className="flex gap-2">
+                  <form action={logout} className="flex-1">
+                    <button type="submit" className="flex items-center gap-2.5 w-full px-4 py-3 rounded-2xl text-sm font-bold text-danger hover:bg-danger/10 transition-all">
+                      <LogOut className="w-4 h-4 shrink-0" />
+                      Logout
+                    </button>
+                  </form>
+                  <QuickMuteButton className="w-11 h-auto rounded-2xl border-white/10" />
+                  <Link
+                    href="/settings"
+                    onClick={() => setOpen(false)}
+                    className="flex items-center justify-center w-11 rounded-2xl text-muted-foreground hover:text-foreground hover:bg-white/5 transition-all"
+                    aria-label="Settings"
+                  >
+                    <Settings className="w-5 h-5" />
+                  </Link>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
+          <NotificationSheet open={notifOpen} onClose={() => setNotifOpen(false)} />
+        </>
       )}
     </>
   );
@@ -189,12 +208,23 @@ export function AppShell({
   showSidebar = true,
   showBottomBar = true,
   mistakeCount = 0,
+  fullscreen = false,
 }: {
   children: React.ReactNode;
   showSidebar?: boolean;
   showBottomBar?: boolean;
   mistakeCount?: number;
+  fullscreen?: boolean;
 }) {
+  if (fullscreen) {
+    return (
+      <ShellCtx.Provider value={{ mistakeCount }}>
+        <div className="h-[100dvh] overflow-hidden bg-background flex flex-col">
+          {children}
+        </div>
+      </ShellCtx.Provider>
+    );
+  }
   return (
     <ShellCtx.Provider value={{ mistakeCount }}>
       <div className="min-h-[100dvh] bg-background game-bg flex flex-col pt-safe md:pt-0">

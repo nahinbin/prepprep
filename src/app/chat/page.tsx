@@ -25,6 +25,7 @@ import {
   SquarePen,
   Zap,
 } from "lucide-react";
+import { bulkCreateDbRoutineBlocks } from "@/app/actions/routine";
 import { VoiceDictation } from "@/components/ui/VoiceDictation";
 import { AppShell, NavMenu } from "@/components/NavMenu";
 import {
@@ -201,6 +202,10 @@ export default function ChatPage() {
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [quizScore, setQuizScore] = useState(0);
   const [quizCompleted, setQuizCompleted] = useState(false);
+
+  // Schedule finalization state
+  const [finalizingScheduleId, setFinalizingScheduleId] = useState<string | null>(null);
+  const [finalizedIds, setFinalizedIds] = useState<Set<string>>(new Set());
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -467,12 +472,28 @@ export default function ChatPage() {
     }
   };
 
+  const handleFinalizeSchedule = async (msgId: string, pendingBlocks: Parameters<typeof bulkCreateDbRoutineBlocks>[0]) => {
+    if (finalizedIds.has(msgId)) return;
+    setFinalizingScheduleId(msgId);
+    try {
+      await bulkCreateDbRoutineBlocks(pendingBlocks);
+      setFinalizedIds((prev) => new Set([...prev, msgId]));
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("routine-blocks-updated"));
+      }
+    } catch (err) {
+      console.error("Failed to finalize schedule:", err);
+    } finally {
+      setFinalizingScheduleId(null);
+    }
+  };
+
   // Check if current conversation is in the initial welcome state
   const isInitialState = messages.length <= 1 && !messages.some((m) => m.role === "user");
 
   return (
-      <AppShell showBottomBar={false} showSidebar={false}>
-        <div className="relative flex h-[100dvh] w-full overflow-hidden bg-[#212121] text-white">
+      <AppShell showBottomBar={false} showSidebar={false} fullscreen>
+        <div className="relative flex h-full w-full overflow-hidden bg-[#212121] text-white">
           {/* ================================================================= */}
           {/*  CHATGPT SIDEBAR (Sessions & History)                            */}
           {/* ================================================================= */}
@@ -814,19 +835,54 @@ export default function ChatPage() {
                               <div className="mt-3 p-4 rounded-2xl bg-gradient-to-br from-violet-950/40 to-black/40 border border-violet-500/30 space-y-3 max-w-lg shadow-lg shadow-black/20">
                                 <div className="flex items-center gap-2 text-violet-300 font-bold text-xs uppercase tracking-wider">
                                   <Calendar className="w-4 h-4 text-violet-400" />
-                                  <span>Daily Routine Updated</span>
+                                  <span>Schedule Ready</span>
                                 </div>
                                 <p className="text-xs text-neutral-300 leading-relaxed">
-                                  {m.actionTaken.scheduleSummary ||
-                                    "Your personalized routine blocks have been generated and saved to your database."}
+                                  {m.actionTaken.scheduleSummary || "Your personalized schedule is ready to save."}
                                 </p>
-                                <Link
-                                  href="/routine"
-                                  className="inline-flex items-center justify-center gap-2 w-full py-2.5 px-4 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-xs font-bold transition-all shadow-md shadow-violet-600/20 active:scale-95"
-                                >
-                                  <Calendar className="w-3.5 h-3.5" />
-                                  <span>Open Daily Routine Schedule →</span>
-                                </Link>
+                                {/* Backward compat: old messages without pendingBlocks show a link */}
+                                {!m.actionTaken.pendingBlocks ? (
+                                  <Link
+                                    href="/routine"
+                                    className="inline-flex items-center justify-center gap-2 w-full py-2.5 px-4 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-xs font-bold transition-all shadow-md shadow-violet-600/20 active:scale-95"
+                                  >
+                                    <Calendar className="w-3.5 h-3.5" />
+                                    <span>Open Daily Routine →</span>
+                                  </Link>
+                                ) : finalizedIds.has(m.id) ? (
+                                  <div className="flex items-center gap-2">
+                                    <div className="flex-1 py-2.5 px-4 rounded-xl bg-emerald-600/20 border border-emerald-500/30 text-emerald-400 text-xs font-bold flex items-center justify-center gap-2">
+                                      <CheckCircle2 className="w-3.5 h-3.5" />
+                                      Saved to Routine
+                                    </div>
+                                    <Link
+                                      href="/routine"
+                                      className="py-2.5 px-4 rounded-xl bg-white/10 hover:bg-white/15 text-white text-xs font-semibold transition-all flex items-center gap-1.5"
+                                    >
+                                      <Calendar className="w-3.5 h-3.5" />
+                                      View
+                                    </Link>
+                                  </div>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleFinalizeSchedule(m.id, m.actionTaken!.pendingBlocks!)}
+                                    disabled={finalizingScheduleId === m.id}
+                                    className="w-full py-2.5 px-4 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-xs font-bold transition-all shadow-md shadow-violet-600/20 active:scale-95 disabled:opacity-70 flex items-center justify-center gap-2"
+                                  >
+                                    {finalizingScheduleId === m.id ? (
+                                      <>
+                                        <div className="w-3.5 h-3.5 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                                        Saving...
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Calendar className="w-3.5 h-3.5" />
+                                        Save Schedule to My Routine →
+                                      </>
+                                    )}
+                                  </button>
+                                )}
                               </div>
                             )}
 
