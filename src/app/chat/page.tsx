@@ -26,7 +26,7 @@ import {
   Zap,
 } from "lucide-react";
 import { bulkCreateDbRoutineBlocks } from "@/app/actions/routine";
-import { VoiceDictation } from "@/components/ui/VoiceDictation";
+import VoicePill from "@/components/ui/VoicePill";
 import { AppShell, NavMenu } from "@/components/NavMenu";
 import {
   sendChatMessage,
@@ -192,9 +192,13 @@ export default function ChatPage() {
   const [messages, setMessages] = useState<ChatMessage[]>(() => [
     createWelcomeMessage("AI Assistant"),
   ]);
-  const [hasInput, setHasInput] = useState(false);
+  const [input, setInput] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  // Voice dictation state
+  const [isListening, setIsListening] = useState(false);
+  const recognitionRef = useRef<{ stop: () => void } | null>(null);
 
   // In-chat Interactive Quiz Modal state
   const [activeQuiz, setActiveQuiz] = useState<GeneratedQuiz | null>(null);
@@ -215,11 +219,85 @@ export default function ChatPage() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isSending]);
 
-  const resizeTextarea = () => {
-    const el = textareaRef.current;
-    if (!el) return;
-    el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, 180)}px`;
+  // Auto resize textarea on input changes
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 180)}px`;
+    }
+  }, [input]);
+
+  // Voice Dictation Handlers (VoicePill integration from commit 373ceb6c)
+  const startSpeechRecognition = () => {
+    const SpeechRecognition =
+      (window as unknown as { SpeechRecognition?: unknown; webkitSpeechRecognition?: unknown })
+        .SpeechRecognition ||
+      (window as unknown as { SpeechRecognition?: unknown; webkitSpeechRecognition?: unknown })
+        .webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+      console.warn("Speech recognition not supported in this browser.");
+      return;
+    }
+
+    try {
+      const recognition = new (SpeechRecognition as new () => {
+        continuous: boolean;
+        interimResults: boolean;
+        lang: string;
+        onresult: (e: {
+          results: Array<{
+            [index: number]: { transcript: string };
+            isFinal: boolean;
+          }>;
+        }) => void;
+        onerror: (e: { error: string }) => void;
+        onend: () => void;
+        start: () => void;
+        stop: () => void;
+      })();
+
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = "en-US";
+
+      recognition.onresult = (event) => {
+        let transcript = "";
+        for (let i = 0; i < event.results.length; i++) {
+          transcript += event.results[i][0].transcript;
+        }
+        setInput(transcript);
+      };
+
+      recognition.onerror = (e) => {
+        console.warn("Speech recognition error:", e.error);
+        setIsListening(false);
+      };
+
+      recognition.onend = () => {
+        setIsListening(false);
+      };
+
+      recognition.start();
+      recognitionRef.current = recognition;
+      setIsListening(true);
+    } catch (err) {
+      console.error("Failed to start speech recognition:", err);
+      setIsListening(false);
+    }
+  };
+
+  const stopSpeechRecognition = (reason: string) => {
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch {}
+      recognitionRef.current = null;
+    }
+    setIsListening(false);
+    if (reason === "cancel") {
+      setInput("");
+    }
   };
 
   // Load user profile & PostgreSQL sessions on mount, purge legacy browser storage
@@ -314,8 +392,15 @@ export default function ChatPage() {
 
   // Send Message Handler
   const handleSend = async (customPrompt?: string) => {
-    const textToSend = (customPrompt ?? textareaRef.current?.value ?? "").trim();
+    const textToSend = (customPrompt || input).trim();
     if (!textToSend || isSending) return;
+
+    if (isListening && recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch {}
+      setIsListening(false);
+    }
 
     const userMsg: ChatMessage = {
       id: "usr_" + Date.now().toString(36),
@@ -326,11 +411,10 @@ export default function ChatPage() {
 
     const newHistory = [...messages, userMsg];
     persistMessages(newHistory);
+    setInput("");
     if (textareaRef.current) {
-      textareaRef.current.value = "";
       textareaRef.current.style.height = "auto";
     }
-    setHasInput(false);
     setIsSending(true);
 
     if (!isTemporaryChat && activeSessionId) {
@@ -492,8 +576,8 @@ export default function ChatPage() {
   const isInitialState = messages.length <= 1 && !messages.some((m) => m.role === "user");
 
   return (
-      <AppShell showBottomBar={false} showSidebar={false} fullscreen>
-        <div className="relative flex flex-1 overflow-hidden bg-[#212121] text-white">
+    <AppShell showBottomBar={false} showSidebar={false}>
+      <div className="relative flex h-[100dvh] w-full overflow-hidden bg-[#212121] text-white">
           {/* ================================================================= */}
           {/*  CHATGPT SIDEBAR (Sessions & History)                            */}
           {/* ================================================================= */}
@@ -959,38 +1043,57 @@ export default function ChatPage() {
             {/* ================================================================= */}
             {/*  CHATGPT SIGNATURE FLOATING INPUT BAR                            */}
             {/* ================================================================= */}
-            <div className="shrink-0 px-4 pt-2 pb-safe-or-4 max-w-3xl w-full mx-auto" style={{ paddingBottom: "max(1rem, env(safe-area-inset-bottom))" }}>
+            <div className="p-4 max-w-3xl w-full mx-auto shrink-0">
+              {/* Listening State Banner */}
+              {isListening && (
+                <div className="mb-2 flex items-center justify-center gap-2 text-xs font-semibold text-rose-400 animate-pulse">
+                  <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
+                  <span>Listening to your voice... Speak now</span>
+                </div>
+              )}
+
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
                   handleSend();
                 }}
-                className="relative rounded-[26px] bg-[#2f2f2f] border border-white/10 shadow-2xl focus-within:border-white/20 transition-all"
+                className="relative rounded-[26px] bg-[#2f2f2f] border border-white/10 shadow-2xl focus-within:border-white/20 transition-all p-2 pl-4"
               >
-                {/* Input row */}
-                <div className="flex items-end gap-2 px-3 py-2">
-                  {/* Voice Dictation — fixed size, never expands layout */}
-                  <VoiceDictation
-                    onTranscriptChange={(text) => {
-                      if (textareaRef.current) {
-                        textareaRef.current.value = text;
-                        resizeTextarea();
-                      }
-                      setHasInput(text.trim().length > 0);
-                    }}
-                    onSend={(text) => handleSend(text)}
-                    disabled={isSending}
-                  />
+                <div className="flex items-end gap-2">
+                  {/* Voice Dictation VoicePill (React Bits) */}
+                  <div className="mb-0.5 shrink-0 flex items-center">
+                    <VoicePill
+                      accentColor="#8b5cf6"
+                      iconColor="#a1a1aa"
+                      background="#232326"
+                      size={30}
+                      shape="pill"
+                      reach={8}
+                      showTime
+                      waveform
+                      slideToCancel
+                      cancelDistance={64}
+                      attack={40}
+                      release={240}
+                      sensitivity={1}
+                      floor={0.1}
+                      openDuration={200}
+                      pressScale={0.95}
+                      mode="auto"
+                      reactive="mic"
+                      ariaLabel="Voice dictation"
+                      onStart={() => startSpeechRecognition()}
+                      onStop={({ reason }) => stopSpeechRecognition(reason)}
+                    />
+                  </div>
 
-                  {/* Uncontrolled textarea — reads value from DOM on send */}
+                  {/* Multiline auto-expanding textarea */}
                   <textarea
                     ref={textareaRef}
                     rows={1}
                     placeholder={`Message ${aiName}...`}
-                    onChange={(e) => {
-                      setHasInput(e.target.value.trim().length > 0);
-                      resizeTextarea();
-                    }}
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
                     onKeyDown={(e) => {
                       if (e.key === "Enter" && !e.shiftKey) {
                         e.preventDefault();
@@ -998,15 +1101,14 @@ export default function ChatPage() {
                       }
                     }}
                     disabled={isSending}
-                    style={{ minHeight: "36px", maxHeight: "180px" }}
-                    className="flex-1 bg-transparent text-white placeholder:text-neutral-500 text-[15px] resize-none focus:outline-none py-2 leading-6 self-center"
+                    className="flex-1 max-h-44 bg-transparent text-white placeholder:text-neutral-400 text-sm font-normal resize-none focus:outline-none py-1.5 leading-6"
                   />
 
-                  {/* Send button */}
+                  {/* Circular Send Arrow Button */}
                   <button
                     type="submit"
-                    disabled={isSending || !hasInput}
-                    className="w-8 h-8 rounded-full bg-white text-black flex items-center justify-center hover:bg-neutral-200 active:scale-95 transition-all disabled:bg-[#3f3f3f] disabled:text-[#6e6e6e] disabled:cursor-not-allowed shrink-0 shadow-sm self-end mb-0.5"
+                    disabled={isSending || !input.trim()}
+                    className="w-8 h-8 rounded-full bg-white text-black flex items-center justify-center hover:bg-neutral-200 active:scale-95 transition-all disabled:bg-[#3f3f3f] disabled:text-[#8e8e8e] disabled:cursor-not-allowed mb-0.5 shrink-0 shadow-sm"
                     aria-label="Send"
                   >
                     <ArrowUp className="w-4 h-4 stroke-[2.5]" />
@@ -1014,8 +1116,8 @@ export default function ChatPage() {
                 </div>
               </form>
 
-              <p className="text-[11px] text-neutral-500 text-center mt-1.5 font-normal">
-                {aiName} can make mistakes. Verify important information.
+              <p className="text-[11px] text-neutral-400 text-center mt-2 font-normal">
+                {aiName} can make mistakes. Verify important academic information.
               </p>
             </div>
           </div>

@@ -24,18 +24,15 @@ import { Suspense } from "react";
 import { BottomBar } from "@/components/BottomBar";
 import { QuickMuteButton } from "@/components/QuickMuteButton";
 import { getAiAssistantName } from "@/lib/routineStorage";
-import { NotificationSheet } from "@/components/NotificationSheet";
 
 const ShellCtx = createContext<{ mistakeCount: number }>({ mistakeCount: 0 });
 
 function NavLinks({
   onNavigate,
   className = "",
-  hideHrefs = [],
 }: {
   onNavigate?: () => void;
   className?: string;
-  hideHrefs?: string[];
 }) {
   const pathname = usePathname();
   const [aiName, setAiName] = useState(() => getAiAssistantName());
@@ -65,7 +62,7 @@ function NavLinks({
 
   return (
     <nav className={className}>
-      {links.filter((l) => !hideHrefs.includes(l.href)).map(({ href, label, icon: Icon, match }) => {
+      {links.map(({ href, label, icon: Icon, match }) => {
         const active = match(pathname);
         return (
           <Link
@@ -87,7 +84,7 @@ function NavLinks({
   );
 }
 
-function NavLinksSafe(props: { onNavigate?: () => void; className?: string; hideHrefs?: string[] }) {
+function NavLinksSafe(props: { onNavigate?: () => void; className?: string }) {
   return (
     <Suspense fallback={<nav className={props.className} />}>
       <NavLinks {...props} />
@@ -130,7 +127,6 @@ export function Sidebar() {
 
 export function NavMenu() {
   const [open, setOpen] = useState(false);
-  const [notifOpen, setNotifOpen] = useState(false);
 
   return (
     <>
@@ -148,62 +144,41 @@ export function NavMenu() {
             className="absolute inset-0 bg-black/65 backdrop-blur-sm"
             onClick={() => setOpen(false)}
           />
-          {/* Floating panel — same old style */}
+          {/* Floating popup container exactly as in commit 373ceb6c */}
           <div className="absolute top-[max(0.5rem,env(safe-area-inset-top))] right-2 bottom-[max(0.5rem,env(safe-area-inset-bottom))] w-[min(20rem,calc(100vw-1rem))] bg-card border border-white/10 shadow-2xl rounded-[1.75rem] overflow-hidden flex flex-col">
-
-            {/* Header: Home icon left, Close right */}
-            <div className="flex items-center justify-between px-5 py-4">
-              <Link href="/" onClick={() => setOpen(false)} className="flex items-center gap-2.5">
-                <Home className="w-5 h-5 text-primary" />
-                <span className="font-black text-sm tracking-tight text-primary">MCQ Arena</span>
-              </Link>
+            <div className="flex items-center justify-end p-5 pb-2">
               <button
                 onClick={() => setOpen(false)}
-                className="inline-flex items-center justify-center w-9 h-9 rounded-xl hover:bg-muted transition-colors"
+                className="inline-flex items-center justify-center w-11 h-11 rounded-2xl hover:bg-muted transition-colors"
                 aria-label="Close menu"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* Nav Links — hide Home (in header) and Notifications (bell in footer) */}
-            <NavLinksSafe
-              onNavigate={() => setOpen(false)}
-              hideHrefs={["/", "/notifications"]}
-              className="flex-1 px-3 space-y-1.5 overflow-y-auto"
-            />
+            <NavLinksSafe onNavigate={() => setOpen(false)} className="px-3 space-y-1.5 flex-1 overflow-y-auto" />
 
-            {/* Bottom: icon-only actions — Bell | Logout | Mute | Settings */}
-            <div className="p-3 flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setNotifOpen(true)}
-                className="flex items-center justify-center w-11 h-11 rounded-2xl text-muted-foreground hover:text-foreground hover:bg-white/5 transition-all"
-                aria-label="Notifications"
-              >
-                <Bell className="w-5 h-5" />
-              </button>
+            <div className="p-3 border-t border-white/5 flex gap-2">
               <form action={logout} className="flex-1">
                 <button
                   type="submit"
-                  className="flex items-center justify-center w-full h-11 rounded-2xl text-danger hover:bg-danger/10 transition-all"
-                  aria-label="Logout"
+                  className="flex items-center gap-3 w-full px-4 py-3.5 rounded-2xl text-base font-bold text-danger hover:bg-danger/10 transition-all"
                 >
-                  <LogOut className="w-5 h-5" />
+                  <LogOut className="w-5 h-5 shrink-0" />
+                  Logout
                 </button>
               </form>
-              <QuickMuteButton className="w-11 h-11 rounded-2xl border-white/10" />
+              <QuickMuteButton className="w-12 h-auto rounded-2xl border-white/10" />
               <Link
                 href="/settings"
                 onClick={() => setOpen(false)}
-                className="flex items-center justify-center w-11 h-11 rounded-2xl text-muted-foreground hover:text-foreground hover:bg-white/5 transition-all"
+                className="flex items-center justify-center w-12 rounded-2xl text-muted-foreground hover:text-foreground hover:bg-white/5 transition-all"
                 aria-label="Settings"
               >
                 <Settings className="w-5 h-5" />
               </Link>
             </div>
           </div>
-          <NotificationSheet open={notifOpen} onClose={() => setNotifOpen(false)} />
         </div>
       )}
     </>
@@ -215,23 +190,12 @@ export function AppShell({
   showSidebar = true,
   showBottomBar = true,
   mistakeCount = 0,
-  fullscreen = false,
 }: {
   children: React.ReactNode;
   showSidebar?: boolean;
   showBottomBar?: boolean;
   mistakeCount?: number;
-  fullscreen?: boolean;
 }) {
-  if (fullscreen) {
-    return (
-      <ShellCtx.Provider value={{ mistakeCount }}>
-        <div className="h-[100dvh] overflow-hidden bg-background flex flex-col">
-          {children}
-        </div>
-      </ShellCtx.Provider>
-    );
-  }
   return (
     <ShellCtx.Provider value={{ mistakeCount }}>
       <div className="min-h-[100dvh] bg-background game-bg flex flex-col pt-safe md:pt-0">
