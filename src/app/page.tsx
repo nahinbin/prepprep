@@ -17,7 +17,6 @@ import {
 import Link from "next/link";
 import { NavMenu, AppShell } from "@/components/NavMenu";
 import { GameHUD } from "@/components/GameHUD";
-import { QuickMuteButton } from "@/components/QuickMuteButton";
 import { calcAccuracy } from "@/lib/stats";
 import { getLevelInfo } from "@/lib/levels";
 import { getEconomySettings } from "@/app/actions/settings";
@@ -131,7 +130,6 @@ export default async function Dashboard() {
           <div className="flex items-center gap-2 shrink-0">
             {/* Top GameHUD: Coins + XP/Level */}
             <GameHUD coins={dbUser.coins} xp={netXp} />
-            <QuickMuteButton />
             <NavMenu />
           </div>
         </div>

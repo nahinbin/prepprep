@@ -384,14 +384,6 @@ export default function RoutinePage() {
               <span className="hidden sm:inline">Focus</span>
             </button>
 
-            {/* AI Schedule — icon only */}
-            <button
-              onClick={() => setIsAiGeneratorOpen(true)}
-              className="w-11 h-11 rounded-2xl bg-gradient-to-br from-violet-600/80 to-primary/80 hover:brightness-110 text-white flex items-center justify-center shadow-md shadow-violet-600/20 transition-all active:scale-95"
-              aria-label="Build with AI"
-            >
-              <Sparkles className="w-5 h-5" />
-            </button>
 
             {/* Calendar */}
             <button
