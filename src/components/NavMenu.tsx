@@ -24,15 +24,18 @@ import { Suspense } from "react";
 import { BottomBar } from "@/components/BottomBar";
 import { QuickMuteButton } from "@/components/QuickMuteButton";
 import { getAiAssistantName } from "@/lib/routineStorage";
+import { NotificationSheet } from "@/components/NotificationSheet";
 
 const ShellCtx = createContext<{ mistakeCount: number }>({ mistakeCount: 0 });
 
 function NavLinks({
   onNavigate,
   className = "",
+  hideHrefs = [],
 }: {
   onNavigate?: () => void;
   className?: string;
+  hideHrefs?: string[];
 }) {
   const pathname = usePathname();
   const [aiName, setAiName] = useState(() => getAiAssistantName());
@@ -62,29 +65,35 @@ function NavLinks({
 
   return (
     <nav className={className}>
-      {links.map(({ href, label, icon: Icon, match }) => {
-        const active = match(pathname);
-        return (
-          <Link
-            key={href}
-            href={href}
-            onClick={onNavigate}
-            className={`flex items-center gap-3 px-4 py-3.5 rounded-2xl text-base font-bold transition-all active:scale-[0.98] ${
-              active
-                ? "bg-primary text-primary-foreground shadow-md shadow-primary/25"
-                : "hover:bg-white/5 text-foreground/85"
-            }`}
-          >
-            <Icon className="w-5 h-5 shrink-0" />
-            {label}
-          </Link>
-        );
-      })}
+      {links
+        .filter((l) => !hideHrefs.includes(l.href))
+        .map(({ href, label, icon: Icon, match }) => {
+          const active = match(pathname);
+          return (
+            <Link
+              key={href}
+              href={href}
+              onClick={onNavigate}
+              className={`flex items-center gap-3 px-4 py-3.5 rounded-2xl text-base font-bold transition-all active:scale-[0.98] ${
+                active
+                  ? "bg-primary text-primary-foreground shadow-md shadow-primary/25"
+                  : "hover:bg-white/5 text-foreground/85"
+              }`}
+            >
+              <Icon className="w-5 h-5 shrink-0" />
+              {label}
+            </Link>
+          );
+        })}
     </nav>
   );
 }
 
-function NavLinksSafe(props: { onNavigate?: () => void; className?: string }) {
+function NavLinksSafe(props: {
+  onNavigate?: () => void;
+  className?: string;
+  hideHrefs?: string[];
+}) {
   return (
     <Suspense fallback={<nav className={props.className} />}>
       <NavLinks {...props} />
@@ -127,6 +136,7 @@ export function Sidebar() {
 
 export function NavMenu() {
   const [open, setOpen] = useState(false);
+  const [notifOpen, setNotifOpen] = useState(false);
 
   return (
     <>
@@ -144,41 +154,71 @@ export function NavMenu() {
             className="absolute inset-0 bg-black/65 backdrop-blur-sm"
             onClick={() => setOpen(false)}
           />
-          {/* Floating popup container exactly as in commit 373ceb6c */}
+          {/* Floating popup container */}
           <div className="absolute top-[max(0.5rem,env(safe-area-inset-top))] right-2 bottom-[max(0.5rem,env(safe-area-inset-bottom))] w-[min(20rem,calc(100vw-1rem))] bg-card border border-white/10 shadow-2xl rounded-[1.75rem] overflow-hidden flex flex-col">
-            <div className="flex items-center justify-end p-5 pb-2">
+            {/* Header: Home icon button on the left, Close (X) button on the right */}
+            <div className="flex items-center justify-between p-4 pb-2">
+              <Link
+                href="/"
+                onClick={() => setOpen(false)}
+                className="inline-flex items-center justify-center w-10 h-10 rounded-2xl bg-white/5 hover:bg-muted text-foreground transition-colors"
+                aria-label="Home"
+              >
+                <Home className="w-5 h-5 text-primary" />
+              </Link>
               <button
                 onClick={() => setOpen(false)}
-                className="inline-flex items-center justify-center w-11 h-11 rounded-2xl hover:bg-muted transition-colors"
+                className="inline-flex items-center justify-center w-10 h-10 rounded-2xl hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
                 aria-label="Close menu"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <NavLinksSafe onNavigate={() => setOpen(false)} className="px-3 space-y-1.5 flex-1 overflow-y-auto" />
+            {/* Nav list without redundant Home and Notifications entries */}
+            <NavLinksSafe
+              onNavigate={() => setOpen(false)}
+              hideHrefs={["/", "/notifications"]}
+              className="px-3 space-y-1.5 flex-1 overflow-y-auto"
+            />
 
-            <div className="p-3 border-t border-white/5 flex gap-2">
-              <form action={logout} className="flex-1">
-                <button
-                  type="submit"
-                  className="flex items-center gap-3 w-full px-4 py-3.5 rounded-2xl text-base font-bold text-danger hover:bg-danger/10 transition-all"
-                >
-                  <LogOut className="w-5 h-5 shrink-0" />
-                  Logout
-                </button>
-              </form>
-              <QuickMuteButton className="w-12 h-auto rounded-2xl border-white/10" />
+            {/* Bottom Actions: Uniform 4-icon grid — Bell, Settings, Mute, Logout */}
+            <div className="p-3 border-t border-white/5 grid grid-cols-4 gap-2">
+              <button
+                type="button"
+                onClick={() => setNotifOpen(true)}
+                className="flex items-center justify-center h-12 rounded-2xl bg-white/5 hover:bg-white/10 text-amber-400 border border-white/5 transition-all active:scale-95"
+                title="Notifications"
+                aria-label="Notifications"
+              >
+                <Bell className="w-5 h-5" />
+              </button>
+
+              <QuickMuteButton className="w-full h-12 rounded-2xl border-white/5 bg-white/5 hover:bg-white/10" />
+
               <Link
                 href="/settings"
                 onClick={() => setOpen(false)}
-                className="flex items-center justify-center w-12 rounded-2xl text-muted-foreground hover:text-foreground hover:bg-white/5 transition-all"
+                className="flex items-center justify-center h-12 rounded-2xl bg-white/5 hover:bg-white/10 text-muted-foreground hover:text-foreground border border-white/5 transition-all active:scale-95"
+                title="Settings"
                 aria-label="Settings"
               >
                 <Settings className="w-5 h-5" />
               </Link>
+
+              <form action={logout} className="w-full h-full">
+                <button
+                  type="submit"
+                  className="w-full h-12 rounded-2xl bg-danger/10 hover:bg-danger/20 text-danger border border-danger/20 flex items-center justify-center transition-all active:scale-95"
+                  title="Logout"
+                  aria-label="Logout"
+                >
+                  <LogOut className="w-5 h-5" />
+                </button>
+              </form>
             </div>
           </div>
+          <NotificationSheet open={notifOpen} onClose={() => setNotifOpen(false)} />
         </div>
       )}
     </>
