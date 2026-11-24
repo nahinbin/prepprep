@@ -192,7 +192,7 @@ export default function ChatPage() {
   const [messages, setMessages] = useState<ChatMessage[]>(() => [
     createWelcomeMessage("AI Assistant"),
   ]);
-  const [input, setInput] = useState("");
+  const [hasInput, setHasInput] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
@@ -215,13 +215,12 @@ export default function ChatPage() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isSending]);
 
-  // Auto resize textarea
-  useEffect(() => {
-    if (textareaRef.current) {
-      textareaRef.current.style.height = "auto";
-      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 180)}px`;
-    }
-  }, [input]);
+  const resizeTextarea = () => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 180)}px`;
+  };
 
   // Load user profile & PostgreSQL sessions on mount, purge legacy browser storage
   useEffect(() => {
@@ -315,7 +314,7 @@ export default function ChatPage() {
 
   // Send Message Handler
   const handleSend = async (customPrompt?: string) => {
-    const textToSend = (customPrompt || input).trim();
+    const textToSend = (customPrompt ?? textareaRef.current?.value ?? "").trim();
     if (!textToSend || isSending) return;
 
     const userMsg: ChatMessage = {
@@ -327,10 +326,11 @@ export default function ChatPage() {
 
     const newHistory = [...messages, userMsg];
     persistMessages(newHistory);
-    setInput("");
     if (textareaRef.current) {
+      textareaRef.current.value = "";
       textareaRef.current.style.height = "auto";
     }
+    setHasInput(false);
     setIsSending(true);
 
     if (!isTemporaryChat && activeSessionId) {
@@ -493,7 +493,7 @@ export default function ChatPage() {
 
   return (
       <AppShell showBottomBar={false} showSidebar={false} fullscreen>
-        <div className="relative flex h-full w-full overflow-hidden bg-[#212121] text-white">
+        <div className="relative flex flex-1 overflow-hidden bg-[#212121] text-white">
           {/* ================================================================= */}
           {/*  CHATGPT SIDEBAR (Sessions & History)                            */}
           {/* ================================================================= */}
@@ -621,7 +621,7 @@ export default function ChatPage() {
           {/* ================================================================= */}
           {/*  MAIN CHAT CANVAS (Pure ChatGPT Aesthetic)                       */}
           {/* ================================================================= */}
-          <div className="flex-1 flex flex-col h-full min-w-0 bg-[#212121]">
+          <div className="flex-1 flex flex-col min-w-0 bg-[#212121] overflow-hidden">
             {/* Top Bar */}
             <header className="h-14 px-4 flex items-center justify-between shrink-0 border-b border-transparent">
               <div className="flex items-center gap-2">
@@ -959,30 +959,38 @@ export default function ChatPage() {
             {/* ================================================================= */}
             {/*  CHATGPT SIGNATURE FLOATING INPUT BAR                            */}
             {/* ================================================================= */}
-            <div className="p-4 max-w-3xl w-full mx-auto shrink-0">
+            <div className="shrink-0 px-4 pt-2 pb-safe-or-4 max-w-3xl w-full mx-auto" style={{ paddingBottom: "max(1rem, env(safe-area-inset-bottom))" }}>
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
                   handleSend();
                 }}
-                className="relative rounded-[26px] bg-[#2f2f2f] border border-white/10 shadow-2xl focus-within:border-white/20 transition-all p-2 pl-3.5"
+                className="relative rounded-[26px] bg-[#2f2f2f] border border-white/10 shadow-2xl focus-within:border-white/20 transition-all"
               >
-                <div className="flex items-center gap-2">
-                  {/* Voice Dictation Button */}
+                {/* Input row */}
+                <div className="flex items-end gap-2 px-3 py-2">
+                  {/* Voice Dictation — fixed size, never expands layout */}
                   <VoiceDictation
-                    onTranscriptChange={(text) => setInput(text)}
+                    onTranscriptChange={(text) => {
+                      if (textareaRef.current) {
+                        textareaRef.current.value = text;
+                        resizeTextarea();
+                      }
+                      setHasInput(text.trim().length > 0);
+                    }}
                     onSend={(text) => handleSend(text)}
                     disabled={isSending}
-                    className="shrink-0"
                   />
 
-                  {/* Multiline auto-expanding textarea */}
+                  {/* Uncontrolled textarea — reads value from DOM on send */}
                   <textarea
                     ref={textareaRef}
                     rows={1}
                     placeholder={`Message ${aiName}...`}
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
+                    onChange={(e) => {
+                      setHasInput(e.target.value.trim().length > 0);
+                      resizeTextarea();
+                    }}
                     onKeyDown={(e) => {
                       if (e.key === "Enter" && !e.shiftKey) {
                         e.preventDefault();
@@ -990,14 +998,15 @@ export default function ChatPage() {
                       }
                     }}
                     disabled={isSending}
-                    className="flex-1 max-h-44 bg-transparent text-white placeholder:text-neutral-400 text-sm font-normal resize-none focus:outline-none py-1.5 leading-6"
+                    style={{ minHeight: "36px", maxHeight: "180px" }}
+                    className="flex-1 bg-transparent text-white placeholder:text-neutral-500 text-[15px] resize-none focus:outline-none py-2 leading-6 self-center"
                   />
 
-                  {/* Circular Send Arrow Button */}
+                  {/* Send button */}
                   <button
                     type="submit"
-                    disabled={isSending || !input.trim()}
-                    className="w-8 h-8 rounded-full bg-white text-black flex items-center justify-center hover:bg-neutral-200 active:scale-95 transition-all disabled:bg-[#3f3f3f] disabled:text-[#8e8e8e] disabled:cursor-not-allowed shrink-0 shadow-sm"
+                    disabled={isSending || !hasInput}
+                    className="w-8 h-8 rounded-full bg-white text-black flex items-center justify-center hover:bg-neutral-200 active:scale-95 transition-all disabled:bg-[#3f3f3f] disabled:text-[#6e6e6e] disabled:cursor-not-allowed shrink-0 shadow-sm self-end mb-0.5"
                     aria-label="Send"
                   >
                     <ArrowUp className="w-4 h-4 stroke-[2.5]" />
@@ -1005,8 +1014,8 @@ export default function ChatPage() {
                 </div>
               </form>
 
-              <p className="text-[11px] text-neutral-400 text-center mt-2 font-normal">
-                {aiName} can make mistakes. Verify important academic information.
+              <p className="text-[11px] text-neutral-500 text-center mt-1.5 font-normal">
+                {aiName} can make mistakes. Verify important information.
               </p>
             </div>
           </div>

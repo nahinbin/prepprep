@@ -12,6 +12,8 @@ import {
   CheckCircle2,
   X,
   SlidersHorizontal,
+  Flame,
+  Play,
 } from "lucide-react";
 import Link from "next/link";
 import { AppShell, NavMenu } from "@/components/NavMenu";
@@ -26,6 +28,7 @@ import { BlockEditorModal } from "@/components/routine/BlockEditorModal";
 import { RoutineCalendarModal } from "@/components/routine/RoutineCalendarModal";
 import { AiScheduleGeneratorModal } from "@/components/routine/AiScheduleGeneratorModal";
 import { TopicCompletionModal } from "@/components/routine/TopicCompletionModal";
+import { FocusTimerModal } from "@/components/routine/FocusTimerModal";
 
 import {
   getUserRoutineBlocks,
@@ -111,6 +114,20 @@ export default function RoutinePage() {
     topic: string;
   } | null>(null);
   const [aiToast, setAiToast] = useState<{ summary: string } | null>(null);
+
+  // Focus Timer state
+  const [focusTimerConfig, setFocusTimerConfig] = useState<{
+    isOpen: boolean;
+    title: string;
+    subject?: string;
+    topic?: string;
+    durationMinutes: number;
+    blockId?: string;
+  }>({
+    isOpen: false,
+    title: "Deep Study Focus",
+    durationMinutes: 25,
+  });
 
   // Filter & sort blocks for the selected date
   const blocks = useMemo(() => {
@@ -264,6 +281,38 @@ export default function RoutinePage() {
     refreshBlocks();
   };
 
+  const handleStartBlockFocus = (block: RoutineBlock) => {
+    // Calculate duration in minutes if startTime and endTime exist
+    let durationMins = 25;
+    if (block.startTime && block.endTime) {
+      try {
+        const [sh, sm] = block.startTime.split(":").map(Number);
+        const [eh, em] = block.endTime.split(":").map(Number);
+        const diff = (eh * 60 + em) - (sh * 60 + sm);
+        if (diff > 0 && diff <= 180) {
+          durationMins = diff;
+        }
+      } catch {}
+    }
+
+    setFocusTimerConfig({
+      isOpen: true,
+      title: block.title,
+      subject: block.subject,
+      topic: block.topic,
+      durationMinutes: durationMins,
+      blockId: block.id,
+    });
+  };
+
+  const handleCompleteFocusSession = (studiedMinutes: number) => {
+    // If attached to a block, we can optionally mark or track it
+    if (focusTimerConfig.blockId) {
+      // Refresh blocks state
+      refreshBlocks();
+    }
+  };
+
   // Date metadata
   const { dayName, formattedDate, isToday } = useMemo(
     () => formatHumanDate(selectedDate),
@@ -319,6 +368,22 @@ export default function RoutinePage() {
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
+            {/* Instant Focus Timer Button */}
+            <button
+              onClick={() =>
+                setFocusTimerConfig({
+                  isOpen: true,
+                  title: "Quick Focus Sprint",
+                  durationMinutes: 25,
+                })
+              }
+              className="h-11 px-3 sm:px-3.5 rounded-2xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-400 font-bold text-xs flex items-center gap-1.5 transition-all active:scale-95 shadow-sm"
+              title="Start Focus Timer"
+            >
+              <Flame className="w-4 h-4 fill-current" />
+              <span className="hidden sm:inline">Focus</span>
+            </button>
+
             {/* AI Schedule — icon only */}
             <button
               onClick={() => setIsAiGeneratorOpen(true)}
@@ -441,6 +506,7 @@ export default function RoutinePage() {
                 onToggleSubtask={handleToggleSubtask}
                 onEdit={handleEditBlock}
                 onDelete={handleDeleteBlock}
+                onStartFocus={handleStartBlockFocus}
               />
             ))}
           </div>
@@ -575,6 +641,18 @@ export default function RoutinePage() {
         dateKey={selectedDate}
         initialBlock={editingBlock}
         initialType={editorInitialType}
+      />
+      {/* Focus Timer Modal (Forest-style full-screen aesthetic) */}
+      <FocusTimerModal
+        isOpen={focusTimerConfig.isOpen}
+        onClose={() =>
+          setFocusTimerConfig((prev) => ({ ...prev, isOpen: false }))
+        }
+        initialTitle={focusTimerConfig.title}
+        initialSubject={focusTimerConfig.subject}
+        initialTopic={focusTimerConfig.topic}
+        defaultDurationMinutes={focusTimerConfig.durationMinutes}
+        onCompleteSession={handleCompleteFocusSession}
       />
     </AppShell>
   );

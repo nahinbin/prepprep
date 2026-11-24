@@ -27,6 +27,7 @@ interface BlockCardProps {
   onToggleSubtask: (blockId: string, subtaskId: string) => void;
   onEdit: (block: RoutineBlock) => void;
   onDelete: (id: string) => void;
+  onStartFocus?: (block: RoutineBlock) => void;
 }
 
 function getNormalIcon(title: string) {
@@ -52,6 +53,7 @@ export function BlockCard({
   onToggleSubtask,
   onEdit,
   onDelete,
+  onStartFocus,
 }: BlockCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
@@ -232,8 +234,21 @@ export function BlockCard({
             </div>
           </div>
 
-          {/* Right: Dropdown toggle & More Menu */}
+          {/* Right: Start Focus Button + Dropdown toggle & More Menu */}
           <div className="flex items-center gap-1.5 shrink-0">
+            {/* Quick Start Focus Button */}
+            {onStartFocus && !block.isCompleted && (
+              <button
+                type="button"
+                onClick={() => onStartFocus(block)}
+                className="h-8 px-3 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-violet-600/30 transition-all active:scale-95 shrink-0"
+                title="Start Focus Timer"
+              >
+                <Play className="w-3.5 h-3.5 fill-current" />
+                <span>Start</span>
+              </button>
+            )}
+
             {/* Accordion Toggle */}
             <button
               onClick={() => setIsExpanded(!isExpanded)}
@@ -357,16 +372,26 @@ export function BlockCard({
             </div>
           )}
 
-          {/* Focus Timer Launch Action (Prepares for next Focus Page) */}
-          <div className="pt-2 flex items-center gap-2">
+          {/* Focus Timer Launch Action & Practice */}
+          <div className="pt-2 flex flex-col sm:flex-row items-center gap-2">
+            {onStartFocus && (
+              <button
+                type="button"
+                onClick={() => onStartFocus(block)}
+                className="w-full sm:flex-1 py-2.5 px-4 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md shadow-violet-600/30 transition-all active:scale-95"
+              >
+                <Play className="w-4 h-4 fill-current" />
+                <span>Start Focus Timer</span>
+              </button>
+            )}
             <Link
               href={`/session/new?mode=practice&subject=${encodeURIComponent(
                 block.subject || ""
               )}`}
-              className="flex-1 py-2.5 px-4 rounded-xl bg-gradient-to-r from-violet-600 to-primary hover:brightness-110 text-white font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md shadow-violet-600/30 transition-all active:scale-95"
+              className="w-full sm:flex-1 py-2.5 px-4 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all active:scale-95"
             >
-              <Play className="w-4 h-4 fill-current" />
-              <span>Practice Questions for {block.subject || "Topic"}</span>
+              <Sparkles className="w-4 h-4 text-violet-400" />
+              <span>Practice Questions</span>
             </Link>
           </div>
         </div>

@@ -31,9 +31,11 @@ const ShellCtx = createContext<{ mistakeCount: number }>({ mistakeCount: 0 });
 function NavLinks({
   onNavigate,
   className = "",
+  hideHrefs = [],
 }: {
   onNavigate?: () => void;
   className?: string;
+  hideHrefs?: string[];
 }) {
   const pathname = usePathname();
   const [aiName, setAiName] = useState(() => getAiAssistantName());
@@ -63,7 +65,7 @@ function NavLinks({
 
   return (
     <nav className={className}>
-      {links.map(({ href, label, icon: Icon, match }) => {
+      {links.filter((l) => !hideHrefs.includes(l.href)).map(({ href, label, icon: Icon, match }) => {
         const active = match(pathname);
         return (
           <Link
@@ -85,7 +87,7 @@ function NavLinks({
   );
 }
 
-function NavLinksSafe(props: { onNavigate?: () => void; className?: string }) {
+function NavLinksSafe(props: { onNavigate?: () => void; className?: string; hideHrefs?: string[] }) {
   return (
     <Suspense fallback={<nav className={props.className} />}>
       <NavLinks {...props} />
@@ -141,63 +143,68 @@ export function NavMenu() {
       </button>
 
       {open && (
-        <>
-          <div className="fixed inset-0 z-50 md:hidden">
-            <div className="absolute inset-0 bg-black/65 backdrop-blur-sm" onClick={() => setOpen(false)} />
-            <div className="absolute inset-y-0 right-0 w-[min(20rem,calc(100vw-1rem))] bg-card border-l border-white/10 shadow-2xl flex flex-col">
-              {/* Header */}
-              <div className="flex items-center justify-between px-5 py-4 border-b border-white/5">
-                <Link href="/" onClick={() => setOpen(false)} className="flex items-center gap-2 text-primary">
-                  <Home className="w-5 h-5" />
-                  <span className="font-black text-sm tracking-tight">MCQ Arena</span>
-                </Link>
+        <div className="fixed inset-0 z-50 md:hidden">
+          <div
+            className="absolute inset-0 bg-black/65 backdrop-blur-sm"
+            onClick={() => setOpen(false)}
+          />
+          {/* Floating panel — same old style */}
+          <div className="absolute top-[max(0.5rem,env(safe-area-inset-top))] right-2 bottom-[max(0.5rem,env(safe-area-inset-bottom))] w-[min(20rem,calc(100vw-1rem))] bg-card border border-white/10 shadow-2xl rounded-[1.75rem] overflow-hidden flex flex-col">
+
+            {/* Header: Home icon left, Close right */}
+            <div className="flex items-center justify-between px-5 py-4">
+              <Link href="/" onClick={() => setOpen(false)} className="flex items-center gap-2.5">
+                <Home className="w-5 h-5 text-primary" />
+                <span className="font-black text-sm tracking-tight text-primary">MCQ Arena</span>
+              </Link>
+              <button
+                onClick={() => setOpen(false)}
+                className="inline-flex items-center justify-center w-9 h-9 rounded-xl hover:bg-muted transition-colors"
+                aria-label="Close menu"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Nav Links — hide Home (in header) and Notifications (bell in footer) */}
+            <NavLinksSafe
+              onNavigate={() => setOpen(false)}
+              hideHrefs={["/", "/notifications"]}
+              className="flex-1 px-3 space-y-1.5 overflow-y-auto"
+            />
+
+            {/* Bottom: icon-only actions — Bell | Logout | Mute | Settings */}
+            <div className="p-3 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setNotifOpen(true)}
+                className="flex items-center justify-center w-11 h-11 rounded-2xl text-muted-foreground hover:text-foreground hover:bg-white/5 transition-all"
+                aria-label="Notifications"
+              >
+                <Bell className="w-5 h-5" />
+              </button>
+              <form action={logout} className="flex-1">
                 <button
-                  onClick={() => setOpen(false)}
-                  className="inline-flex items-center justify-center w-9 h-9 rounded-xl hover:bg-muted transition-colors"
-                  aria-label="Close menu"
+                  type="submit"
+                  className="flex items-center justify-center w-full h-11 rounded-2xl text-danger hover:bg-danger/10 transition-all"
+                  aria-label="Logout"
                 >
-                  <X className="w-5 h-5" />
+                  <LogOut className="w-5 h-5" />
                 </button>
-              </div>
-
-              {/* Nav Links */}
-              <NavLinksSafe onNavigate={() => setOpen(false)} className="px-3 py-2 space-y-1 flex-1 overflow-y-auto" />
-
-              {/* Bottom Actions */}
-              <div className="p-3 border-t border-white/5">
-                <div className="flex gap-2 mb-2">
-                  <button
-                    type="button"
-                    onClick={() => setNotifOpen(true)}
-                    className="flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl text-sm font-semibold text-muted-foreground hover:text-foreground hover:bg-white/5 transition-all border border-white/5"
-                    aria-label="Notifications"
-                  >
-                    <Bell className="w-4 h-4" />
-                    <span>Notifications</span>
-                  </button>
-                </div>
-                <div className="flex gap-2">
-                  <form action={logout} className="flex-1">
-                    <button type="submit" className="flex items-center gap-2.5 w-full px-4 py-3 rounded-2xl text-sm font-bold text-danger hover:bg-danger/10 transition-all">
-                      <LogOut className="w-4 h-4 shrink-0" />
-                      Logout
-                    </button>
-                  </form>
-                  <QuickMuteButton className="w-11 h-auto rounded-2xl border-white/10" />
-                  <Link
-                    href="/settings"
-                    onClick={() => setOpen(false)}
-                    className="flex items-center justify-center w-11 rounded-2xl text-muted-foreground hover:text-foreground hover:bg-white/5 transition-all"
-                    aria-label="Settings"
-                  >
-                    <Settings className="w-5 h-5" />
-                  </Link>
-                </div>
-              </div>
+              </form>
+              <QuickMuteButton className="w-11 h-11 rounded-2xl border-white/10" />
+              <Link
+                href="/settings"
+                onClick={() => setOpen(false)}
+                className="flex items-center justify-center w-11 h-11 rounded-2xl text-muted-foreground hover:text-foreground hover:bg-white/5 transition-all"
+                aria-label="Settings"
+              >
+                <Settings className="w-5 h-5" />
+              </Link>
             </div>
           </div>
           <NotificationSheet open={notifOpen} onClose={() => setNotifOpen(false)} />
-        </>
+        </div>
       )}
     </>
   );

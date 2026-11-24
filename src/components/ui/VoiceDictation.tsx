@@ -151,79 +151,75 @@ export function VoiceDictation({
   };
 
   return (
-    <div className={`relative flex items-center ${className}`}>
-      {/* Non-intrusive error banner */}
+    <div className={`relative shrink-0 ${className}`}>
+      {/* Error tooltip above */}
       {errorMessage && (
-        <div className="absolute bottom-full left-0 mb-2 z-50 flex items-center gap-2 px-3 py-2 rounded-xl bg-rose-950/90 border border-rose-500/40 text-rose-200 text-xs shadow-xl backdrop-blur-md max-w-xs animate-in fade-in slide-in-from-bottom-2">
+        <div className="absolute bottom-full left-0 mb-2 z-50 flex items-center gap-2 px-3 py-2 rounded-xl bg-rose-950/90 border border-rose-500/40 text-rose-200 text-xs shadow-xl backdrop-blur-md w-64 animate-in fade-in slide-in-from-bottom-2">
           <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
-          <span>{errorMessage}</span>
+          <span className="flex-1">{errorMessage}</span>
           <button
             type="button"
             onClick={() => setErrorMessage(null)}
-            className="ml-auto text-rose-400 hover:text-white"
+            className="text-rose-400 hover:text-white shrink-0"
           >
             <X className="w-3.5 h-3.5" />
           </button>
         </div>
       )}
 
-      {!isListening ? (
-        /* Normal State: Mic button */
-        <button
-          type="button"
-          onClick={startListening}
-          disabled={disabled}
-          title="Dictate with voice"
-          aria-label="Start voice dictation"
-          className="w-8 h-8 rounded-full flex items-center justify-center text-neutral-400 hover:text-white hover:bg-white/10 active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          <Mic className="w-4 h-4 stroke-[2.2]" />
-        </button>
-      ) : (
-        /* Active Recording Capsule: Clean, sleek, non-colliding */
-        <div className="flex items-center gap-2 px-2.5 py-1 rounded-full bg-violet-950/80 border border-violet-500/50 text-white shadow-lg shadow-violet-900/30 animate-in fade-in zoom-in-95 duration-150">
-          {/* Pulsing indicator */}
-          <span className="relative flex h-2.5 w-2.5">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75" />
-            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500" />
+      {/* Recording pill — floats above the form, doesn't affect layout */}
+      {isListening && (
+        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 z-50 flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#1c1c1c] border border-rose-500/40 shadow-xl shadow-black/40 whitespace-nowrap animate-in fade-in slide-in-from-bottom-2 duration-200">
+          <span className="relative flex h-2 w-2 shrink-0">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-60" />
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500" />
           </span>
-
-          {/* Timer */}
-          <span className="text-xs font-mono font-bold text-violet-200 tabular-nums">
+          <span className="text-xs font-mono font-semibold text-rose-300 tabular-nums">
             {formatTime(seconds)}
           </span>
-
-          {/* Sound waves animation */}
-          <div className="flex items-center gap-0.5 h-3 px-1">
-            <span className="w-0.5 h-2.5 bg-violet-400 rounded-full animate-pulse" />
-            <span className="w-0.5 h-4 bg-violet-300 rounded-full animate-pulse delay-75" />
-            <span className="w-0.5 h-1.5 bg-violet-400 rounded-full animate-pulse delay-150" />
-            <span className="w-0.5 h-3.5 bg-violet-300 rounded-full animate-pulse delay-200" />
+          <div className="flex items-end gap-0.5 h-3">
+            <span className="w-0.5 h-2 bg-rose-400/70 rounded-full animate-pulse" />
+            <span className="w-0.5 h-3 bg-rose-300/80 rounded-full animate-pulse delay-75" />
+            <span className="w-0.5 h-1.5 bg-rose-400/70 rounded-full animate-pulse delay-150" />
+            <span className="w-0.5 h-2.5 bg-rose-300/80 rounded-full animate-pulse delay-200" />
           </div>
-
-          {/* Cancel button */}
           <button
             type="button"
             onClick={handleCancel}
-            title="Cancel dictation"
             aria-label="Cancel recording"
-            className="w-5 h-5 rounded-full flex items-center justify-center hover:bg-white/20 text-neutral-300 hover:text-rose-300 transition-colors ml-0.5"
+            className="w-4 h-4 flex items-center justify-center text-neutral-400 hover:text-rose-300 transition-colors"
           >
-            <X className="w-3.5 h-3.5" />
+            <X className="w-3 h-3" />
           </button>
-
-          {/* Done / Send button */}
           <button
             type="button"
             onClick={handleDone}
-            title="Send voice message"
             aria-label="Finish recording"
-            className="w-5 h-5 rounded-full bg-violet-600 hover:bg-violet-500 text-white flex items-center justify-center transition-all active:scale-95 shadow-sm"
+            className="w-5 h-5 rounded-full bg-rose-500 hover:bg-rose-400 text-white flex items-center justify-center transition-all active:scale-95"
           >
             <Send className="w-2.5 h-2.5 stroke-[2.5]" />
           </button>
         </div>
       )}
+
+      {/* Mic button — always same size, pulsing ring when active */}
+      <button
+        type="button"
+        onClick={isListening ? handleCancel : startListening}
+        disabled={disabled}
+        title={isListening ? "Stop recording" : "Voice dictation"}
+        aria-label={isListening ? "Stop recording" : "Start voice dictation"}
+        className={`relative w-8 h-8 rounded-full flex items-center justify-center transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed ${
+          isListening
+            ? "text-rose-400 bg-rose-500/15"
+            : "text-neutral-400 hover:text-white hover:bg-white/10"
+        }`}
+      >
+        {isListening && (
+          <span className="absolute inset-0 rounded-full border border-rose-500/60 animate-ping opacity-40" />
+        )}
+        <Mic className="w-4 h-4 stroke-[2.2]" />
+      </button>
     </div>
   );
 }
